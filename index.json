@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "official",
+  "name": "LumaForge Official Extensions",
+  "description": "Official extensions maintained by the LumaForge team",
+  "maintainer": "LumaForge Team",
+  "version": "1.0.0",
+  "updatedAt": "2026-07-19T00:00:00Z",
+  "extensions": [
+    {
+      "id": "opensteamtool",
+      "displayName": "OpenSteamTool",
+      "description": "DLL-based Steam integration tool",
+      "version": "1.4.8",
+      "author": "LumaForge Team",
+      "categories": ["steam"],
+      "manifestUrl": "extensions/opensteamtool/manifest.json",
+      "verified": true
+    }
+  ]
+}
