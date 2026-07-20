@@ -3,7 +3,7 @@
   "id": "opensteamtool-repo",
   "name": "opensteamtool-repo",
   "displayName": "OpenSteamTool (Community)",
-  "description": "DLL-based Steam integration tool (community version). Manages dwmapi.dll, xinput1_4.dll, and OpenSteamTool.dll in the Steam root directory.",
+  "description": "DLL-based Steam integration tool. Manages dwmapi.dll, xinput1_4.dll, and OpenSteamTool.dll in the Steam root directory.",
   "longDescription": "OpenSteamTool is a DLL-based Steam integration tool that modifies the Steam client by placing custom DLLs in the Steam root directory. It provides enhanced functionality for Steam game management and integration.\n\nManaged files: dwmapi.dll, xinput1_4.dll, OpenSteamTool.dll",
   "summary": "DLL-based Steam integration tool for enhanced Steam functionality",
   "version": "1.4.8",
@@ -93,13 +93,12 @@
     "config": {
       "owner": "OpenSteam001",
       "repo": "OpenSteamTool",
-      "tagPattern": "v*",
+      "tagPattern": "*",
       "assetPattern": "*.zip",
       "includePrereleases": false
     }
   },
   "behavior": {
-    "luaOwnershipOverride": true,
     "injectsDll": true,
     "modifiesStorePage": false,
     "addsGameEntries": false
