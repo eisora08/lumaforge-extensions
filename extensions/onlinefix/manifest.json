@@ -25,6 +25,7 @@
     "toolConfig": {
       "target": "game-folder",
       "usesIndex": true,
+      "indexUrl": "https://api.perondepot.xyz/all/",
       "backup": true,
       "backupSuffix": ".bak"
     }

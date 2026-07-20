@@ -29,6 +29,8 @@
       "files": [
         { "source": "Steamless.CLI.exe", "target": "Steamless.CLI.exe" }
       ],
+      "executable": "Steamless.CLI.exe",
+      "args": ["{gameExe}"],
       "backup": true,
       "backupSuffix": ".bak"
     }
