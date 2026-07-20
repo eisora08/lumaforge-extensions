@@ -323,19 +323,24 @@ local function install(steam_root)
     log("INFO", "Placed " .. dll .. " into Steam root")
   end
 
-  -- Ensure config/lua directory exists
+  -- Safe config/lua lifecycle: restore backup if available, create if missing
   local lua_dir  = lua_folder(steam_root)
   local lua_bak  = lua_backup(steam_root)
 
-  if exists(lua_dir) then
-    log("INFO", "config/lua already exists — skipping")
-  elseif exists(lua_bak) then
+  if exists(lua_bak) then
     -- Restore backup instead of creating empty directory (data preservation)
-    rename(lua_bak, lua_dir)
-    log("INFO", "Restored config/lua from backup")
+    if exists(lua_dir) then
+      log("INFO", "config/lua already exists — backup preserved, using existing")
+    else
+      rename(lua_bak, lua_dir)
+      log("INFO", "Restored config/lua from backup")
+    end
   else
-    lumaforge.create_dir(lua_dir)
-    log("INFO", "Created empty config/lua directory")
+    -- No backup exists — create new directory only if missing
+    if not exists(lua_dir) then
+      lumaforge.create_dir(lua_dir)
+      log("INFO", "Created empty config/lua directory")
+    end
   end
 
   -- Cleanup temp files
@@ -377,16 +382,26 @@ local function enable(steam_root)
     end
   end
 
-  -- Restore config/lua from backup
+  -- Safe config/lua lifecycle: restore backup if available, create if missing
   local lua_dir = lua_folder(steam_root)
   local lua_bak = lua_backup(steam_root)
 
-  if exists(lua_bak) and not exists(lua_dir) then
-    rename(lua_bak, lua_dir)
-    any_work = true
-    log("INFO", "Restored config/lua from backup")
-  elseif exists(lua_bak) and exists(lua_dir) then
-    log("WARN", "Both config/lua and config/lua.bak exist — skipping restore")
+  if exists(lua_bak) then
+    -- Backup exists: restore it
+    if not exists(lua_dir) then
+      rename(lua_bak, lua_dir)
+      any_work = true
+      log("INFO", "Restored config/lua from backup")
+    else
+      log("INFO", "config/lua already exists — backup preserved, using existing")
+    end
+  else
+    -- No backup: create if missing
+    if not exists(lua_dir) then
+      lumaforge.create_dir(lua_dir)
+      any_work = true
+      log("INFO", "Created empty config/lua directory")
+    end
   end
 
   if not any_work then
@@ -431,16 +446,13 @@ local function disable(steam_root)
     end
   end
 
-  -- Hide config/lua -> config/lua.bak
+  -- Hide config/lua -> config/lua.bak (preserves user data)
   local lua_dir = lua_folder(steam_root)
   local lua_bak = lua_backup(steam_root)
 
   if exists(lua_dir) and exists(lua_bak) then
-    error("Cannot disable: both config/lua and config/lua.bak exist. " ..
-          "One of them may be stale. Please resolve manually.")
-  end
-
-  if exists(lua_dir) then
+    log("WARN", "Cannot hide config/lua: config/lua.bak already exists — leaving as-is")
+  elseif exists(lua_dir) then
     rename(lua_dir, lua_bak)
     any_work = true
     log("INFO", "Moved config/lua to config/lua.bak")
@@ -490,21 +502,16 @@ local function uninstall(steam_root)
     end
   end
 
-  -- Hide config/lua
+  -- Hide config/lua -> config/lua.bak (preserves user data)
   local lua_dir = lua_folder(steam_root)
   local lua_bak = lua_backup(steam_root)
 
-  if exists(lua_dir) then
-    -- Remove stale .bak first so rename can succeed
-    if exists(lua_bak) then
-      -- Can't easily remove a non-empty directory with remove_file
-      -- Just leave both and log a warning
-      log("WARN", "Cannot hide config/lua: config/lua.bak already exists — leaving as-is")
-    else
-      rename(lua_dir, lua_bak)
-      any_work = true
-      log("INFO", "Moved config/lua to config/lua.bak")
-    end
+  if exists(lua_dir) and exists(lua_bak) then
+    log("WARN", "Cannot hide config/lua: config/lua.bak already exists — leaving as-is")
+  elseif exists(lua_dir) then
+    rename(lua_dir, lua_bak)
+    any_work = true
+    log("INFO", "Moved config/lua to config/lua.bak")
   end
 
   if not any_work then
