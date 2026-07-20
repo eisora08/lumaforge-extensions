@@ -16,9 +16,30 @@
     { "id": "steam-tool", "version": "1.0.0", "description": "Modifies Steam runtime behavior via DLL injection" }
   ],
   "managedFiles": [
-    { "path": "dwmapi.dll" },
-    { "path": "xinput1_4.dll" },
-    { "path": "OpenSteamTool.dll" }
+    {
+      "path": "dwmapi.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    },
+    {
+      "path": "xinput1_4.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    },
+    {
+      "path": "OpenSteamTool.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    }
   ],
   "criteria": {
     "detection": {
