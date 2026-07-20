@@ -3,64 +3,35 @@
   "id": "goldberg",
   "name": "goldberg",
   "displayName": "Goldberg Emulator",
-  "description": "Open-source Steam emulator. Replaces steam_api.dll with a local network emulator for offline/LAN play.",
-  "longDescription": "Goldberg emulates Steam's networking and authentication, allowing games to run without Steam client. Supports LAN multiplayer between Goldberg instances.",
-  "summary": "Steam emulator for offline and LAN play",
-  "version": "1.0.0",
-  "author": "LumaForge",
-  "license": "MIT",
-  "categories": ["tools", "emulation"],
-  "tags": ["steam", "emulator", "offline", "lan", "goldberg"],
-  "managedFiles": [
-    {
-      "path": "steam_api.dll",
-      "required": true,
-      "isExecutable": true,
-      "replaceStrategy": "replace",
-      "backupStrategy": "backup-rename"
-    },
-    {
-      "path": "steam_api64.dll",
-      "required": false,
-      "isExecutable": true,
-      "replaceStrategy": "replace",
-      "backupStrategy": "backup-rename"
-    }
+  "description": "Steam client emulator for offline play",
+  "summary": "Steam emulator for running games without Steam client",
+  "version": "0.4.0",
+  "author": "Detonator01",
+  "repository": "https://github.com/Detonator01/Goldberg_Emulator",
+  "license": "GPL-3.0",
+  "categories": ["steam", "emulation"],
+  "tags": ["goldberg", "emulator", "offline"],
+  "type": "tool",
+  "toolConfig": {
+    "target": "game-folder",
+    "files": [
+      { "source": "steamclient.dll", "target": "steamclient.dll" },
+      { "source": "steamclient64.dll", "target": "steamclient64.dll" }
+    ],
+    "backup": true,
+    "backupSuffix": ".bak"
+  },
+  "permissions": [
+    { "id": "filesystem.write", "reason": "Copy files to game folder" },
+    { "id": "filesystem.delete", "reason": "Remove files on revert" }
   ],
-  "installStrategy": {
-    "type": "custom"
-  },
   "releaseProvider": {
-    "type": "githubRelease",
+    "provider": "github",
     "config": {
-      "owner": "MrGoldberg",
-      "repo": "GoldbergEmu",
-      "assetPattern": "goldberg_emu.*\\.zip",
-      "prerelease": false
-    }
-  },
-  "metadata": {
-    "surfaces": ["tools"],
-    "toolConfig": {
-      "type": "rename-proxy",
-      "description": "Replaces steam_api.dll/steam_api64.dll with Goldberg emulator. Original files are backed up as .bak.",
-      "icon": "shield",
-      "category": "emulator",
-      "priority": 10,
-      "managedFiles": [
-        {
-          "source": "steam_api.dll",
-          "target": "steam_api.dll",
-          "originalName": "steam_api.dll",
-          "required": true
-        },
-        {
-          "source": "steam_api64.dll",
-          "target": "steam_api64.dll",
-          "originalName": "steam_api64.dll",
-          "required": false
-        }
-      ]
+      "owner": "Detonator01",
+      "repo": "Goldberg_Emulator",
+      "assetPattern": "*.zip",
+      "tagPattern": "*"
     }
   }
 }

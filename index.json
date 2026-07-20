@@ -9,35 +9,39 @@
   "extensions": [
     {
       "id": "goldberg",
-      "name": "Goldberg Emulator",
-      "version": "1.0.0",
+      "displayName": "Goldberg Emulator",
       "description": "Open-source Steam emulator for offline and LAN play",
-      "category": "tools",
-      "downloadUrl": "extensions/goldberg/manifest.json"
+      "version": "1.0.0",
+      "categories": ["tools"],
+      "manifestUrl": "extensions/goldberg/manifest.json",
+      "verified": true
     },
     {
       "id": "smokeapi",
-      "name": "SmokeAPI",
-      "version": "1.0.0",
+      "displayName": "SmokeAPI",
       "description": "Steam API wrapper for DLC unlock and offline mode",
-      "category": "tools",
-      "downloadUrl": "extensions/smokeapi/manifest.json"
+      "version": "1.0.0",
+      "categories": ["tools"],
+      "manifestUrl": "extensions/smokeapi/manifest.json",
+      "verified": true
     },
     {
       "id": "steamless",
-      "name": "Steamless",
-      "version": "1.0.0",
+      "displayName": "Steamless",
       "description": "Universal Steam DRM unpacker",
-      "category": "tools",
-      "downloadUrl": "extensions/steamless/manifest.json"
+      "version": "1.0.0",
+      "categories": ["tools"],
+      "manifestUrl": "extensions/steamless/manifest.json",
+      "verified": true
     },
     {
       "id": "onlinefix",
-      "name": "Online-Fix",
-      "version": "1.0.0",
+      "displayName": "Online-Fix",
       "description": "Online multiplayer fix via community servers",
-      "category": "tools",
-      "downloadUrl": "extensions/onlinefix/manifest.json"
+      "version": "1.0.0",
+      "categories": ["tools"],
+      "manifestUrl": "extensions/onlinefix/manifest.json",
+      "verified": true
     }
   ]
 }
