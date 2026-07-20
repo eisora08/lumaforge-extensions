@@ -42,6 +42,17 @@
       "categories": ["tools"],
       "manifestUrl": "extensions/onlinefix/manifest.json",
       "verified": true
+    },
+    {
+      "id": "opensteamtool-repo",
+      "name": "opensteamtool-repo",
+      "displayName": "OpenSteamTool (Community)",
+      "description": "DLL-based Steam integration tool (independent Lua module)",
+      "version": "1.4.8",
+      "author": "LumaForge Team",
+      "categories": ["steam"],
+      "manifestUrl": "extensions/opensteamtool/manifest.json",
+      "verified": true
     }
   ]
 }
