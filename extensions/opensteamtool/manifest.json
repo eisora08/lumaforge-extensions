@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "opensteamtool",
-  "name": "OpenSteamTool",
+  "name": "opensteamtool",
   "displayName": "OpenSteamTool (Community)",
   "description": "DLL-based Steam integration tool (independent Lua module)",
   "longDescription": "Manages dwmapi.dll, xinput1_4.dll, and OpenSteamTool.dll in the Steam root directory. Supports enable/disable via .bak rename and manages the config/lua script folder.\n\nPublished as an independent Lua extension for the LumaForge runtime.",
