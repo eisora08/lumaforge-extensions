@@ -44,8 +44,8 @@
       "verified": true
     },
     {
-      "id": "opensteamtool-repo",
-      "name": "opensteamtool-repo",
+      "id": "opensteamtool",
+      "name": "opensteamtool",
       "displayName": "OpenSteamTool (Community)",
       "description": "DLL-based Steam integration tool (independent Lua module)",
       "version": "1.4.8",
