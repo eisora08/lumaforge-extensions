@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "steamless",
+  "name": "steamless",
+  "displayName": "Steamless",
+  "description": "Universal Steam DRM unpacker. Removes Steam DRM (CEG) from executables.",
+  "longDescription": "Steamless is a plugin-based DRM unpacker that removes Steam CEG protection from game executables. Works as a standalone tool or as a Steamless.CLI plugin.",
+  "summary": "Remove Steam DRM protection from executables",
+  "version": "1.0.0",
+  "author": "LumaForge",
+  "license": "MIT",
+  "categories": ["tools", "fix"],
+  "tags": ["steam", "drm", "unpack", "ceg", "steamless"],
+  "managedFiles": [
+    {
+      "path": "Steamless.CLI.exe",
+      "required": true,
+      "isExecutable": true,
+      "replaceStrategy": "keep",
+      "backupStrategy": "none"
+    },
+    {
+      "path": "Steamless.CLI.dll",
+      "required": true,
+      "isExecutable": true,
+      "replaceStrategy": "keep",
+      "backupStrategy": "none"
+    },
+    {
+      "path": "Plugins",
+      "required": true,
+      "optional": false,
+      "replaceStrategy": "keep",
+      "backupStrategy": "none"
+    }
+  ],
+  "installStrategy": {
+    "type": "custom"
+  },
+  "releaseProvider": {
+    "type": "githubRelease",
+    "config": {
+      "owner": "pointfeev",
+      "repo": "Steamless",
+      "assetPattern": "Steamless\\.zip",
+      "prerelease": false
+    }
+  },
+  "metadata": {
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "type": "copy-files",
+      "description": "Copies Steamless CLI and plugins to game directory. Run Steamless.CLI.exe on the game executable to remove DRM.",
+      "icon": "package",
+      "category": "fix",
+      "priority": 30,
+      "managedFiles": [
+        {
+          "source": "Steamless.CLI.exe",
+          "target": "Steamless.CLI.exe",
+          "required": true
+        },
+        {
+          "source": "Steamless.CLI.dll",
+          "target": "Steamless.CLI.dll",
+          "required": true
+        },
+        {
+          "source": "Plugins",
+          "target": "Plugins",
+          "required": true
+        }
+      ]
+    }
+  }
+}

@@ -5,6 +5,39 @@
   "description": "Official extensions maintained by the LumaForge team",
   "maintainer": "LumaForge Team",
   "version": "1.0.0",
-  "updatedAt": "2026-07-19T00:00:00Z",
-  "extensions": []
+  "updatedAt": "2026-07-20T00:00:00Z",
+  "extensions": [
+    {
+      "id": "goldberg",
+      "name": "Goldberg Emulator",
+      "version": "1.0.0",
+      "description": "Open-source Steam emulator for offline and LAN play",
+      "category": "tools",
+      "downloadUrl": "extensions/goldberg/manifest.json"
+    },
+    {
+      "id": "smokeapi",
+      "name": "SmokeAPI",
+      "version": "1.0.0",
+      "description": "Steam API wrapper for DLC unlock and offline mode",
+      "category": "tools",
+      "downloadUrl": "extensions/smokeapi/manifest.json"
+    },
+    {
+      "id": "steamless",
+      "name": "Steamless",
+      "version": "1.0.0",
+      "description": "Universal Steam DRM unpacker",
+      "category": "tools",
+      "downloadUrl": "extensions/steamless/manifest.json"
+    },
+    {
+      "id": "onlinefix",
+      "name": "Online-Fix",
+      "version": "1.0.0",
+      "description": "Online multiplayer fix via community servers",
+      "category": "tools",
+      "downloadUrl": "extensions/onlinefix/manifest.json"
+    }
+  ]
 }

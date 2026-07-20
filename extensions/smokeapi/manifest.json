@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "id": "smokeapi",
+  "name": "smokeapi",
+  "displayName": "SmokeAPI",
+  "description": "Steam API wrapper that enables DLC unlocking and offline play. Lightweight alternative to Goldberg.",
+  "longDescription": "SmokeAPI hooks into steam_api.dll to unlock DLCs and enable offline mode. Less intrusive than full emulators — preserves Steam overlay and achievements.",
+  "summary": "Steam API wrapper for DLC unlock and offline mode",
+  "version": "1.0.0",
+  "author": "LumaForge",
+  "license": "MIT",
+  "categories": ["tools", "fix"],
+  "tags": ["steam", "dlc", "unlock", "offline", "smokeapi"],
+  "managedFiles": [
+    {
+      "path": "steam_api.dll",
+      "required": true,
+      "isExecutable": true,
+      "replaceStrategy": "replace",
+      "backupStrategy": "backup-rename"
+    },
+    {
+      "path": "steam_api64.dll",
+      "required": false,
+      "isExecutable": true,
+      "replaceStrategy": "replace",
+      "backupStrategy": "backup-rename"
+    },
+    {
+      "path": "steam_appid.txt",
+      "required": false,
+      "replaceStrategy": "keep",
+      "backupStrategy": "none"
+    }
+  ],
+  "installStrategy": {
+    "type": "custom"
+  },
+  "releaseProvider": {
+    "type": "githubRelease",
+    "config": {
+      "owner": "acidicoala",
+      "repo": "SmokeAPI",
+      "assetPattern": "SmokeAPI.*\\.zip",
+      "prerelease": false
+    }
+  },
+  "metadata": {
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "type": "rename-proxy",
+      "description": "Wraps Steam API with DLC unlock and offline mode support. Original DLLs backed up as .bak.",
+      "icon": "disc3",
+      "category": "fix",
+      "priority": 20,
+      "managedFiles": [
+        {
+          "source": "steam_api.dll",
+          "target": "steam_api.dll",
+          "originalName": "steam_api.dll",
+          "required": true
+        },
+        {
+          "source": "steam_api64.dll",
+          "target": "steam_api64.dll",
+          "originalName": "steam_api64.dll",
+          "required": false
+        }
+      ]
+    }
+  }
+}

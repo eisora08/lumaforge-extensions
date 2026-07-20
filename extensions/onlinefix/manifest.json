@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "id": "onlinefix",
+  "name": "onlinefix",
+  "displayName": "Online-Fix",
+  "description": "Steam online fix for multiplayer games. Enables online play without official Steam servers.",
+  "longDescription": "Online-Fix redirects Steam networking to community servers, enabling online multiplayer for games that would otherwise require official Steam infrastructure.",
+  "summary": "Online multiplayer fix via community servers",
+  "version": "1.0.0",
+  "author": "LumaForge",
+  "license": "MIT",
+  "categories": ["tools", "fix"],
+  "tags": ["steam", "online", "multiplayer", "fix", "onlinefix"],
+  "managedFiles": [
+    {
+      "path": "steam_api.dll",
+      "required": true,
+      "isExecutable": true,
+      "replaceStrategy": "replace",
+      "backupStrategy": "backup-rename"
+    },
+    {
+      "path": "steam_api64.dll",
+      "required": false,
+      "isExecutable": true,
+      "replaceStrategy": "replace",
+      "backupStrategy": "backup-rename"
+    }
+  ],
+  "installStrategy": {
+    "type": "custom"
+  },
+  "releaseProvider": {
+    "type": "githubRelease",
+    "config": {
+      "owner": "online-fix",
+      "repo": "online-fix.github.io",
+      "assetPattern": ".*\\.zip",
+      "prerelease": false
+    }
+  },
+  "metadata": {
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "type": "rename-proxy",
+      "description": "Replaces Steam API with online-fix proxy for community multiplayer. Original DLLs backed up as .bak.",
+      "icon": "zap",
+      "category": "fix",
+      "priority": 40,
+      "managedFiles": [
+        {
+          "source": "steam_api.dll",
+          "target": "steam_api.dll",
+          "originalName": "steam_api.dll",
+          "required": true
+        },
+        {
+          "source": "steam_api64.dll",
+          "target": "steam_api64.dll",
+          "originalName": "steam_api64.dll",
+          "required": false
+        }
+      ]
+    }
+  }
+}
