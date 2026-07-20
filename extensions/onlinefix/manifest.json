@@ -10,6 +10,16 @@
   "categories": ["steam", "multiplayer"],
   "tags": ["onlinefix", "multiplayer", "coop"],
   "type": "tool",
+  "managedFiles": [
+    {
+      "path": "onlinefix.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    }
+  ],
   "toolConfig": {
     "target": "game-folder",
     "usesIndex": true,

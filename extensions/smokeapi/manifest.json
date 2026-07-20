@@ -12,6 +12,24 @@
   "categories": ["steam", "dlc"],
   "tags": ["smokeapi", "dlc", "unlocker"],
   "type": "tool",
+  "managedFiles": [
+    {
+      "path": "smoke_api32.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    },
+    {
+      "path": "smoke_api64.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    }
+  ],
   "toolConfig": {
     "target": "game-folder",
     "mode": "proxy",

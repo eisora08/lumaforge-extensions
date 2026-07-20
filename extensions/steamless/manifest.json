@@ -12,6 +12,16 @@
   "categories": ["steam", "drm"],
   "tags": ["steamless", "drm", "unpacker"],
   "type": "tool",
+  "managedFiles": [
+    {
+      "path": "Steamless.CLI.exe",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    }
+  ],
   "toolConfig": {
     "target": "game-folder",
     "files": [

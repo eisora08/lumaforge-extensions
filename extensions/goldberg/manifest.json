@@ -12,6 +12,24 @@
   "categories": ["steam", "emulation"],
   "tags": ["goldberg", "emulator", "offline"],
   "type": "tool",
+  "managedFiles": [
+    {
+      "path": "steamclient.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    },
+    {
+      "path": "steamclient64.dll",
+      "required": false,
+      "replaceStrategy": "always",
+      "backupStrategy": "rename",
+      "validationStrategy": "exists",
+      "isExecutable": true
+    }
+  ],
   "toolConfig": {
     "target": "game-folder",
     "files": [
