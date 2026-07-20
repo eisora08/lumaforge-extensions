@@ -8,13 +8,13 @@
   "updatedAt": "2026-07-19T00:00:00Z",
   "extensions": [
     {
-      "id": "opensteamtool",
-      "displayName": "OpenSteamTool",
-      "description": "DLL-based Steam integration tool",
+      "id": "opensteamtool-repo",
+      "displayName": "OpenSteamTool (Community)",
+      "description": "DLL-based Steam integration tool (community version)",
       "version": "1.4.8",
       "author": "LumaForge Team",
       "categories": ["steam"],
-      "manifestUrl": "extensions/opensteamtool/manifest.json",
+      "manifestUrl": "extensions/opensteamtool-repo/manifest.json",
       "verified": true
     }
   ]
