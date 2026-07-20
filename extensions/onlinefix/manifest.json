@@ -9,7 +9,6 @@
   "author": "LumaForge Team",
   "categories": ["steam", "multiplayer"],
   "tags": ["onlinefix", "multiplayer", "coop"],
-  "type": "tool",
   "managedFiles": [
     {
       "path": "onlinefix.dll",
@@ -20,11 +19,15 @@
       "isExecutable": true
     }
   ],
-  "toolConfig": {
-    "target": "game-folder",
-    "usesIndex": true,
-    "backup": true,
-    "backupSuffix": ".bak"
+  "metadata": {
+    "type": "tool",
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "target": "game-folder",
+      "usesIndex": true,
+      "backup": true,
+      "backupSuffix": ".bak"
+    }
   },
   "permissions": [
     { "id": "filesystem.write", "reason": "Copy files to game folder" },

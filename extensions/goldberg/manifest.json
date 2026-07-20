@@ -11,7 +11,6 @@
   "license": "GPL-3.0",
   "categories": ["steam", "emulation"],
   "tags": ["goldberg", "emulator", "offline"],
-  "type": "tool",
   "managedFiles": [
     {
       "path": "steamclient.dll",
@@ -30,14 +29,18 @@
       "isExecutable": true
     }
   ],
-  "toolConfig": {
-    "target": "game-folder",
-    "files": [
-      { "source": "steamclient.dll", "target": "steamclient.dll" },
-      { "source": "steamclient64.dll", "target": "steamclient64.dll" }
-    ],
-    "backup": true,
-    "backupSuffix": ".bak"
+  "metadata": {
+    "type": "tool",
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "target": "game-folder",
+      "files": [
+        { "source": "steamclient.dll", "target": "steamclient.dll" },
+        { "source": "steamclient64.dll", "target": "steamclient64.dll" }
+      ],
+      "backup": true,
+      "backupSuffix": ".bak"
+    }
   },
   "permissions": [
     { "id": "filesystem.write", "reason": "Copy files to game folder" },

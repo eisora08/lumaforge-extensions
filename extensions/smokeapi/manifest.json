@@ -11,7 +11,6 @@
   "license": "Unlicense",
   "categories": ["steam", "dlc"],
   "tags": ["smokeapi", "dlc", "unlocker"],
-  "type": "tool",
   "managedFiles": [
     {
       "path": "smoke_api32.dll",
@@ -30,17 +29,21 @@
       "isExecutable": true
     }
   ],
-  "toolConfig": {
-    "target": "game-folder",
-    "mode": "proxy",
-    "files": [
-      { "source": "smoke_api32.dll", "target": "steam_api.dll", "backupSuffix": "_o" },
-      { "source": "smoke_api64.dll", "target": "steam_api64.dll", "backupSuffix": "_o" }
-    ],
-    "configFiles": [
-      { "source": "SmokeAPI.config.json", "target": "SmokeAPI.config.json" }
-    ],
-    "backup": true
+  "metadata": {
+    "type": "tool",
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "target": "game-folder",
+      "mode": "proxy",
+      "files": [
+        { "source": "smoke_api32.dll", "target": "steam_api.dll", "backupSuffix": "_o" },
+        { "source": "smoke_api64.dll", "target": "steam_api64.dll", "backupSuffix": "_o" }
+      ],
+      "configFiles": [
+        { "source": "SmokeAPI.config.json", "target": "SmokeAPI.config.json" }
+      ],
+      "backup": true
+    }
   },
   "permissions": [
     { "id": "filesystem.write", "reason": "Copy files to game folder" },

@@ -11,7 +11,6 @@
   "license": "MIT",
   "categories": ["steam", "drm"],
   "tags": ["steamless", "drm", "unpacker"],
-  "type": "tool",
   "managedFiles": [
     {
       "path": "Steamless.CLI.exe",
@@ -22,13 +21,17 @@
       "isExecutable": true
     }
   ],
-  "toolConfig": {
-    "target": "game-folder",
-    "files": [
-      { "source": "Steamless.CLI.exe", "target": "Steamless.CLI.exe" }
-    ],
-    "backup": true,
-    "backupSuffix": ".bak"
+  "metadata": {
+    "type": "tool",
+    "surfaces": ["tools"],
+    "toolConfig": {
+      "target": "game-folder",
+      "files": [
+        { "source": "Steamless.CLI.exe", "target": "Steamless.CLI.exe" }
+      ],
+      "backup": true,
+      "backupSuffix": ".bak"
+    }
   },
   "permissions": [
     { "id": "filesystem.write", "reason": "Copy Steamless to game folder" },
