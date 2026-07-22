@@ -288,7 +288,7 @@ local function install(steam_root)
   end
 
   -- Resolve temp directory inside extension data dir
-  local ext_dir = lumaforge.get_extension_dir("opensteamtool")
+  local ext_dir = lumaforge.get_extension_dir("opensteamtool-repo")
 
   -- Fetch latest release metadata from GitHub
   local download_url, tag_name = fetch_latest_release()
@@ -536,7 +536,7 @@ end
 
 extension = {
   -- Metadata (captured by load_and_evaluate into LuaExtensionTable)
-  id          = "opensteamtool",
+  id          = "opensteamtool-repo",
   name        = "OpenSteamTool (Community)",
   version     = "1.4.8",
   description = "DLL-based Steam integration tool (independent Lua module)",
