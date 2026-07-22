@@ -2,95 +2,156 @@
   OpenSteamTool — Independent Lua Extension
 
   All lifecycle functions run inside the mlua sandbox with access to
-  the lumaforge.* API.  Every file operation uses the Rust backend
-  (std::fs on the host), so all I/O is sandboxed through Tauri IPC.
+  the lumaforge.* API. Every file operation uses the Rust backend.
+
+  Shared-directory safety contract:
+  - Steam/config must already exist.
+  - OpenSteamTool may create only Steam/config/lua when missing.
+  - If legacy Steam/config/lua.bak exists and lua does not, restore it.
+  - Disable and uninstall never move, delete, rename, or clear config/lua.
+  - Only the managed DLL files use the .bak enable/disable lifecycle.
 ]]
 
 -- ============================================================================
 -- Constants
 -- ============================================================================
 
-local MANAGED_DLLS = { "dwmapi.dll", "xinput1_4.dll", "OpenSteamTool.dll" }
+local EXTENSION_ID = "opensteamtool"
 
--- GitHub repository for release downloads
+local MANAGED_DLLS = {
+  "dwmapi.dll",
+  "xinput1_4.dll",
+  "OpenSteamTool.dll"
+}
+
 local GITHUB_OWNER = "OpenSteam001"
-local GITHUB_REPO  = "OpenSteamTool"
-local GITHUB_API   = "https://api.github.com/repos/" .. GITHUB_OWNER .. "/" .. GITHUB_REPO
+local GITHUB_REPO = "OpenSteamTool"
+
+local GITHUB_API =
+  "https://api.github.com/repos/" ..
+  GITHUB_OWNER ..
+  "/" ..
+  GITHUB_REPO
 
 -- ============================================================================
--- Minimal JSON Decoder (pure Lua, handles GitHub API response subset)
+-- Minimal JSON Decoder
 -- ============================================================================
 
 local function json_parse(str, pos)
   pos = pos or 1
+
   while pos <= #str do
     local c = str:sub(pos, pos)
-    if c == ' ' or c == '\t' or c == '\n' or c == '\r' then
+
+    if (
+      c == " " or
+      c == "\t" or
+      c == "\n" or
+      c == "\r"
+    ) then
       pos = pos + 1
     else
       break
     end
   end
-  if pos > #str then return nil end
+
+  if pos > #str then
+    return nil
+  end
 
   local c = str:sub(pos, pos)
 
-  if c == '{' then
+  if c == "{" then
     local obj = {}
-    pos = pos + 1
     local expecting_key = true
     local key = nil
+
+    pos = pos + 1
+
     while pos <= #str do
       local w = str:sub(pos, pos)
-      if w == ' ' or w == '\t' or w == '\n' or w == '\r' then
+
+      if (
+        w == " " or
+        w == "\t" or
+        w == "\n" or
+        w == "\r"
+      ) then
         pos = pos + 1
-      elseif w == '}' then
+      elseif w == "}" then
         return obj, pos + 1
-      elseif w == ':' then
+      elseif w == ":" then
         expecting_key = false
         pos = pos + 1
-      elseif w == ',' then
+      elseif w == "," then
         expecting_key = true
         pos = pos + 1
       elseif expecting_key then
-        local k, np = json_parse(str, pos)
-        if k == nil then return nil end
-        key = k
-        pos = np
+        local parsed_key, next_pos =
+          json_parse(str, pos)
+
+        if parsed_key == nil then
+          return nil
+        end
+
+        key = parsed_key
+        pos = next_pos
       else
-        local val, np = json_parse(str, pos)
-        if val == nil then return nil end
-        obj[key] = val
+        local value, next_pos =
+          json_parse(str, pos)
+
+        if value == nil then
+          return nil
+        end
+
+        obj[key] = value
         key = nil
         expecting_key = true
-        pos = np
+        pos = next_pos
       end
     end
+
     return obj, pos
-  elseif c == '[' then
+  elseif c == "[" then
     local arr = {}
+
     pos = pos + 1
+
     while pos <= #str do
       local w = str:sub(pos, pos)
-      if w == ' ' or w == '\t' or w == '\n' or w == '\r' then
+
+      if (
+        w == " " or
+        w == "\t" or
+        w == "\n" or
+        w == "\r"
+      ) then
         pos = pos + 1
-      elseif w == ']' then
+      elseif w == "]" then
         return arr, pos + 1
-      elseif w == ',' then
+      elseif w == "," then
         pos = pos + 1
       else
-        local val, np = json_parse(str, pos)
-        if val == nil then return nil end
-        table.insert(arr, val)
-        pos = np
+        local value, next_pos =
+          json_parse(str, pos)
+
+        if value == nil then
+          return nil
+        end
+
+        table.insert(arr, value)
+        pos = next_pos
       end
     end
+
     return arr, pos
   elseif c == '"' then
     local end_pos = pos + 1
+
     while end_pos <= #str do
       local sc = str:sub(end_pos, end_pos)
-      if sc == '\\' then
+
+      if sc == "\\" then
         end_pos = end_pos + 2
       elseif sc == '"' then
         break
@@ -98,157 +159,543 @@ local function json_parse(str, pos)
         end_pos = end_pos + 1
       end
     end
-    local s = str:sub(pos + 1, end_pos - 1)
-    s = s:gsub('\\"', '"'):gsub('\\\\', '\\'):gsub('\\/', '/'):gsub('\\n', '\n'):gsub('\\r', '\r'):gsub('\\t', '\t')
-    return s, end_pos + 1
-  elseif c == 't' and str:sub(pos, pos + 3) == 'true' then
+
+    if end_pos > #str then
+      return nil
+    end
+
+    local value =
+      str:sub(pos + 1, end_pos - 1)
+
+    value = value
+      :gsub('\\"', '"')
+      :gsub("\\\\", "\\")
+      :gsub("\\/", "/")
+      :gsub("\\n", "\n")
+      :gsub("\\r", "\r")
+      :gsub("\\t", "\t")
+
+    return value, end_pos + 1
+  elseif (
+    c == "t" and
+    str:sub(pos, pos + 3) == "true"
+  ) then
     return true, pos + 4
-  elseif c == 'f' and str:sub(pos, pos + 4) == 'false' then
+  elseif (
+    c == "f" and
+    str:sub(pos, pos + 4) == "false"
+  ) then
     return false, pos + 5
-  elseif c == 'n' and str:sub(pos, pos + 3) == 'null' then
+  elseif (
+    c == "n" and
+    str:sub(pos, pos + 3) == "null"
+  ) then
     return nil, pos + 4
   else
     local end_pos = pos
+
     while end_pos <= #str do
       local nc = str:sub(end_pos, end_pos)
-      if (nc >= '0' and nc <= '9') or nc == '-' or nc == '+' or nc == '.' or nc == 'e' or nc == 'E' then
+
+      if (
+        (nc >= "0" and nc <= "9") or
+        nc == "-" or
+        nc == "+" or
+        nc == "." or
+        nc == "e" or
+        nc == "E"
+      ) then
         end_pos = end_pos + 1
       else
         break
       end
     end
-    local num_str = str:sub(pos, end_pos - 1)
-    return tonumber(num_str), end_pos
+
+    local number_text =
+      str:sub(pos, end_pos - 1)
+
+    local number_value =
+      tonumber(number_text)
+
+    if number_value == nil then
+      return nil
+    end
+
+    return number_value, end_pos
   end
 end
 
 local function json_decode(str)
-  local val = json_parse(str, 1)
-  return val
+  local value = json_parse(str, 1)
+  return value
 end
 
 -- ============================================================================
 -- Helpers
 -- ============================================================================
 
---- Log a message through the LumaForge diagnostic channel.
-local function log(level, msg)
-  lumaforge.log(level, "[OPENSTEAMTOOL] " .. msg)
+local function log(level, message)
+  lumaforge.log(
+    level,
+    "[OPENSTEAMTOOL] " .. message
+  )
 end
 
---- Check if a file exists on disk (Rust backend).
+local function validate_steam_root(steam_root)
+  if (
+    steam_root == nil or
+    steam_root == ""
+  ) then
+    error(
+      "Steam root directory not provided"
+    )
+  end
+
+  if not lumaforge.file_exists(steam_root) then
+    error(
+      "Steam root directory does not exist: " ..
+      steam_root
+    )
+  end
+
+  return steam_root
+end
+
 local function exists(path)
   return lumaforge.file_exists(path)
 end
 
---- Safely rename a file, creating parent directories if needed.
 local function rename(from, to)
-  log("DEBUG", "rename " .. from .. " -> " .. to)
-  lumaforge.rename_file(from, to)
+  log(
+    "DEBUG",
+    "rename " .. from .. " -> " .. to
+  )
+
+  local result =
+    lumaforge.rename_file(from, to)
+
+  if result == false then
+    error(
+      "Failed to rename: " ..
+      from ..
+      " -> " ..
+      to
+    )
+  end
+
+  return result
 end
 
---- Remove a file; returns true if it was removed, false if it didn't exist.
 local function remove(path)
-  log("DEBUG", "remove " .. path)
+  log(
+    "DEBUG",
+    "remove " .. path
+  )
+
   return lumaforge.remove_file(path)
 end
 
---- Return the config/lua folder path under the Steam root.
+local function config_folder(steam_root)
+  return steam_root .. "\\config"
+end
+
 local function lua_folder(steam_root)
-  return steam_root .. "\\config\\lua"
+  return config_folder(steam_root) ..
+    "\\lua"
 end
 
---- Return the config/lua.bak folder path under the Steam root.
 local function lua_backup(steam_root)
-  return steam_root .. "\\config\\lua.bak"
+  return config_folder(steam_root) ..
+    "\\lua.bak"
 end
 
---- Fetch the latest release info from the GitHub API and return the
---- download URL for the zip asset and the tag name, or error on failure.
+-- Ensure only Steam/config/lua exists.
+--
+-- Safety rules:
+-- 1. Never create Steam/config.
+-- 2. Never delete Steam/config.
+-- 3. Never replace Steam/config.
+-- 4. If lua exists, preserve it.
+-- 5. If lua is missing and legacy lua.bak exists, restore it.
+-- 6. If neither exists, create only the lua child directory.
+-- 7. If both exist, preserve both without merging or deleting.
+local function ensure_lua_folder(steam_root)
+  validate_steam_root(steam_root)
+
+  local config_dir =
+    config_folder(steam_root)
+
+  local lua_dir =
+    lua_folder(steam_root)
+
+  local legacy_lua_backup =
+    lua_backup(steam_root)
+
+  if not exists(config_dir) then
+    error(
+      "Steam config directory does not exist: " ..
+      config_dir
+    )
+  end
+
+  if exists(lua_dir) then
+    log(
+      "INFO",
+      "config/lua already exists; preserving its contents"
+    )
+
+    if exists(legacy_lua_backup) then
+      log(
+        "WARN",
+        "Both config/lua and config/lua.bak exist; " ..
+        "preserving both without merging or deleting data"
+      )
+    end
+
+    return lua_dir
+  end
+
+  if exists(legacy_lua_backup) then
+    log(
+      "INFO",
+      "Restoring legacy config/lua.bak to config/lua"
+    )
+
+    rename(
+      legacy_lua_backup,
+      lua_dir
+    )
+
+    if not exists(lua_dir) then
+      error(
+        "Failed to restore config/lua from: " ..
+        legacy_lua_backup
+      )
+    end
+
+    log(
+      "INFO",
+      "Restored config/lua successfully"
+    )
+
+    return lua_dir
+  end
+
+  log(
+    "INFO",
+    "Creating only the missing lua directory inside Steam config"
+  )
+
+  local created =
+    lumaforge.create_dir(lua_dir)
+
+  if created == false then
+    error(
+      "Failed to create Lua directory: " ..
+      lua_dir
+    )
+  end
+
+  if not exists(lua_dir) then
+    error(
+      "Lua directory was not created: " ..
+      lua_dir
+    )
+  end
+
+  log(
+    "INFO",
+    "Created Lua directory: " ..
+    lua_dir
+  )
+
+  return lua_dir
+end
+
 local function fetch_latest_release()
-  log("INFO", "Fetching latest release from GitHub API")
-  local url = GITHUB_API .. "/releases/latest"
-  local response = lumaforge.fetch_url(url)
-  if response == nil or response == "" then
-    error("GitHub API returned an empty response")
+  log(
+    "INFO",
+    "Fetching latest release from GitHub API"
+  )
+
+  local url =
+    GITHUB_API .. "/releases/latest"
+
+  local response =
+    lumaforge.fetch_url(url)
+
+  if (
+    response == nil or
+    response == ""
+  ) then
+    error(
+      "GitHub API returned an empty response"
+    )
   end
 
-  local data = json_decode(response)
+  local data =
+    json_decode(response)
+
   if data == nil then
-    error("Failed to parse GitHub API response JSON")
+    error(
+      "Failed to parse GitHub API response JSON"
+    )
   end
 
-  local tag_name = data.tag_name
+  local tag_name =
+    data.tag_name
+
   if tag_name == nil then
-    error("GitHub API response missing 'tag_name'")
+    error(
+      "GitHub API response missing tag_name"
+    )
   end
 
-  local assets = data.assets
-  if assets == nil or #assets == 0 then
-    error("No assets found in the latest GitHub release")
+  local assets =
+    data.assets
+
+  if (
+    assets == nil or
+    #assets == 0
+  ) then
+    error(
+      "No assets found in the latest GitHub release"
+    )
   end
 
-  -- Find the first zip asset
-  local download_url = nil
+  local matching_assets = {}
+
   for _, asset in ipairs(assets) do
-    if asset.name and asset.name:match("%.zip$") then
-      download_url = asset.browser_download_url
-      if download_url then break end
+    local asset_name =
+      asset.name
+
+    local asset_url =
+      asset.browser_download_url
+
+    if (
+      asset_name and
+      asset_url and
+      asset_name:lower():match("%.zip$")
+    ) then
+      table.insert(
+        matching_assets,
+        {
+          name = asset_name,
+          url = asset_url
+        }
+      )
     end
   end
 
-  if download_url == nil then
-    error("No zip asset found in the latest GitHub release")
+  if #matching_assets == 0 then
+    error(
+      "No ZIP asset found in the latest GitHub release"
+    )
   end
 
-  log("INFO", "Found release " .. tag_name .. " at " .. download_url)
-  return download_url, tag_name
+  if #matching_assets > 1 then
+    local matching_names = {}
+
+    for _, asset in ipairs(
+      matching_assets
+    ) do
+      table.insert(
+        matching_names,
+        asset.name
+      )
+    end
+
+    error(
+      "Multiple ZIP assets found; selection is ambiguous: " ..
+      table.concat(
+        matching_names,
+        ", "
+      )
+    )
+  end
+
+  local selected_asset =
+    matching_assets[1]
+
+  log(
+    "INFO",
+    "Selected release " ..
+    tag_name ..
+    " asset " ..
+    selected_asset.name
+  )
+
+  return
+    selected_asset.url,
+    tag_name,
+    selected_asset.name
 end
 
---- Build a path string for a file in the extension's temp directory.
---- Ensures the temp directory exists.
 local function temp_path(ext_dir, name)
-  local tdir = ext_dir .. "\\temp"
-  lumaforge.create_dir(tdir)
-  return tdir .. "\\" .. name
+  local temp_dir =
+    ext_dir .. "\\temp"
+
+  if not exists(temp_dir) then
+    local created =
+      lumaforge.create_dir(temp_dir)
+
+    if created == false then
+      error(
+        "Failed to create extension temp directory: " ..
+        temp_dir
+      )
+    end
+  end
+
+  if not exists(temp_dir) then
+    error(
+      "Extension temp directory does not exist: " ..
+      temp_dir
+    )
+  end
+
+  return temp_dir .. "\\" .. name
+end
+
+local function managed_file_path(
+  steam_root,
+  file_name
+)
+  return steam_root .. "\\" .. file_name
+end
+
+local function managed_backup_path(
+  steam_root,
+  file_name
+)
+  return managed_file_path(
+    steam_root,
+    file_name
+  ) .. ".bak"
+end
+
+local function verify_all_active_dlls(
+  steam_root,
+  operation
+)
+  for _, dll in ipairs(MANAGED_DLLS) do
+    local dll_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
+
+    if not exists(dll_path) then
+      error(
+        "Verification failed after " ..
+        operation ..
+        ": " ..
+        dll ..
+        " was not found in Steam root"
+      )
+    end
+  end
+end
+
+local function verify_all_backup_dlls(
+  steam_root,
+  operation
+)
+  for _, dll in ipairs(MANAGED_DLLS) do
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
+
+    if not exists(backup_path) then
+      error(
+        "Verification failed after " ..
+        operation ..
+        ": " ..
+        dll ..
+        ".bak was not found in Steam root"
+      )
+    end
+  end
+end
+
+local function cleanup_temp_file(path)
+  pcall(function()
+    if exists(path) then
+      remove(path)
+    end
+  end)
 end
 
 -- ============================================================================
 -- Detect
 -- ============================================================================
 
---- Check physical presence of the 3 managed DLLs and their .bak states.
---- Returns a table with status, installedFiles, missingFiles, backupFiles.
 local function detect(steam_root)
-  log("INFO", "detect(steam_root=" .. steam_root .. ")")
+  validate_steam_root(steam_root)
+
+  log(
+    "INFO",
+    "detect(steam_root=" ..
+    steam_root ..
+    ")"
+  )
 
   local installed = {}
-  local missing   = {}
-  local backups   = {}
+  local missing = {}
+  local backups = {}
 
   for _, dll in ipairs(MANAGED_DLLS) do
-    local dll_path  = steam_root .. "\\" .. dll
-    local bak_path  = dll_path .. ".bak"
+    local dll_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
+
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
 
     if exists(dll_path) then
-      table.insert(installed, dll)
+      table.insert(
+        installed,
+        dll
+      )
     else
-      table.insert(missing, dll)
+      table.insert(
+        missing,
+        dll
+      )
     end
 
-    if exists(bak_path) then
-      table.insert(backups, dll)
+    if exists(backup_path) then
+      table.insert(
+        backups,
+        dll
+      )
     end
   end
 
-  local all_installed = #installed == #MANAGED_DLLS
-  local all_backup    = #backups == #MANAGED_DLLS
-  local none_exist    = #installed == 0 and not all_backup
+  local all_installed =
+    #installed == #MANAGED_DLLS
+
+  local all_backed_up =
+    #backups == #MANAGED_DLLS
 
   local status
-  if none_exist and #backups == 0 then
+
+  if (
+    #installed == 0 and
+    #backups == 0
+  ) then
     status = "available"
-  elseif all_backup and #installed == 0 then
+  elseif (
+    all_backed_up and
+    #installed == 0
+  ) then
     status = "disabled"
   elseif all_installed then
     status = "enabled"
@@ -256,16 +703,24 @@ local function detect(steam_root)
     status = "installed"
   end
 
-  log("INFO", "detect status=" .. status ..
-              " installed=" .. #installed ..
-              " missing=" .. #missing ..
-              " backups=" .. #backups)
+  log(
+    "INFO",
+    "detect status=" ..
+    status ..
+    " installed=" ..
+    #installed ..
+    " missing=" ..
+    #missing ..
+    " backups=" ..
+    #backups
+  )
 
   return {
-    status          = status,
-    installedFiles  = installed,
-    missingFiles    = missing,
-    backupFiles     = backups,
+    success = true,
+    status = status,
+    installedFiles = installed,
+    missingFiles = missing,
+    backupFiles = backups,
     installedVersion = nil
   }
 end
@@ -274,260 +729,597 @@ end
 -- Install
 -- ============================================================================
 
---- Download the latest release from GitHub, extract the 3 DLLs, and
---- place them into the Steam root directory.  Also ensures the
---- config/lua directory exists after installation.
 local function install(steam_root)
-  log("INFO", "install(steam_root=" .. steam_root .. ")")
+  validate_steam_root(steam_root)
 
-  -- Skip if already fully installed
-  local current = detect(steam_root)
-  if #current.installedFiles == #MANAGED_DLLS then
-    log("INFO", "Already fully installed — skipping")
-    return { success = true }
+  log(
+    "INFO",
+    "install(steam_root=" ..
+    steam_root ..
+    ")"
+  )
+
+  -- Steam/config is shared and must already exist.
+  local config_dir =
+    config_folder(steam_root)
+
+  if not exists(config_dir) then
+    error(
+      "Steam config directory does not exist: " ..
+      config_dir
+    )
   end
 
-  -- Resolve temp directory inside extension data dir
-  local ext_dir = lumaforge.get_extension_dir("opensteamtool-repo")
+  local current =
+    detect(steam_root)
 
-  -- Fetch latest release metadata from GitHub
-  local download_url, tag_name = fetch_latest_release()
-  local safe_tag = tag_name:gsub("[^%w%.%-_]", "_")
+  if (
+    current.status == "enabled" and
+    #current.installedFiles ==
+      #MANAGED_DLLS
+  ) then
+    local existing_lua_dir =
+      ensure_lua_folder(steam_root)
 
-  -- Download zip
-  local zip_path = temp_path(ext_dir, "opensteamtool-" .. safe_tag .. ".zip")
-  log("INFO", "Downloading " .. download_url .. " -> " .. zip_path)
-  lumaforge.download_file(download_url, zip_path)
+    log(
+      "INFO",
+      "Already fully installed; Lua directory ready: " ..
+      existing_lua_dir
+    )
 
-  -- Extract DLLs
-  local extract_dir = temp_path(ext_dir, "extracted-" .. safe_tag)
-  lumaforge.create_dir(extract_dir)
-  log("INFO", "Extracting to " .. extract_dir)
-  local extracted = lumaforge.extract_zip(zip_path, extract_dir, MANAGED_DLLS)
-  if #extracted == 0 then
-    error("No managed DLLs found in the downloaded archive")
+    return {
+      success = true,
+      status = "enabled"
+    }
   end
-  log("INFO", "Extracted " .. #extracted .. " files: " .. table.concat(extracted, ", "))
 
-  -- Copy each DLL to the Steam root
+  local ext_dir =
+    lumaforge.get_extension_dir(
+      EXTENSION_ID
+    )
+
+  if (
+    ext_dir == nil or
+    ext_dir == ""
+  ) then
+    error(
+      "Failed to resolve extension directory for " ..
+      EXTENSION_ID
+    )
+  end
+
+  local download_url,
+    tag_name,
+    asset_name =
+      fetch_latest_release()
+
+  local safe_tag =
+    tag_name:gsub(
+      "[^%w%.%-_]",
+      "_"
+    )
+
+  local zip_path =
+    temp_path(
+      ext_dir,
+      "opensteamtool-" ..
+      safe_tag ..
+      ".zip"
+    )
+
+  log(
+    "INFO",
+    "Downloading asset " ..
+    asset_name ..
+    " to " ..
+    zip_path
+  )
+
+  local download_result =
+    lumaforge.download_file(
+      download_url,
+      zip_path
+    )
+
+  if download_result == false then
+    error(
+      "Failed to download OpenSteamTool release asset"
+    )
+  end
+
+  if not exists(zip_path) then
+    error(
+      "Downloaded ZIP file does not exist: " ..
+      zip_path
+    )
+  end
+
+  local extract_dir =
+    temp_path(
+      ext_dir,
+      "extracted-" ..
+      safe_tag
+    )
+
+  if not exists(extract_dir) then
+    local created =
+      lumaforge.create_dir(
+        extract_dir
+      )
+
+    if created == false then
+      error(
+        "Failed to create extraction directory: " ..
+        extract_dir
+      )
+    end
+  end
+
+  log(
+    "INFO",
+    "Extracting release to " ..
+    extract_dir
+  )
+
+  local extracted =
+    lumaforge.extract_zip(
+      zip_path,
+      extract_dir,
+      MANAGED_DLLS
+    )
+
+  if (
+    extracted == nil or
+    #extracted == 0
+  ) then
+    cleanup_temp_file(zip_path)
+
+    error(
+      "No managed DLLs were extracted from the release archive"
+    )
+  end
+
+  log(
+    "INFO",
+    "Extracted " ..
+    #extracted ..
+    " managed file(s): " ..
+    table.concat(
+      extracted,
+      ", "
+    )
+  )
+
+  local extracted_paths = {}
+
+  for _, path in ipairs(extracted) do
+    local normalized =
+      tostring(path):gsub(
+        "/",
+        "\\"
+      )
+
+    local file_name =
+      normalized:match(
+        "([^\\]+)$"
+      )
+
+    if file_name then
+      extracted_paths[
+        file_name:lower()
+      ] = normalized
+    end
+  end
+
   for _, dll in ipairs(MANAGED_DLLS) do
-    local src = extract_dir .. "\\" .. dll
-    local dst = steam_root .. "\\" .. dll
+    local extracted_value =
+      extracted_paths[
+        dll:lower()
+      ]
 
-    -- Remove existing DLL first (rename fails if target exists)
-    if exists(dst) then
-      remove(dst)
+    local source_path = nil
+
+    if extracted_value then
+      if exists(extracted_value) then
+        source_path =
+          extracted_value
+      else
+        local relative_candidate =
+          extract_dir ..
+          "\\" ..
+          extracted_value
+
+        if exists(relative_candidate) then
+          source_path =
+            relative_candidate
+        end
+      end
     end
 
-    rename(src, dst)
-    log("INFO", "Placed " .. dll .. " into Steam root")
-  end
+    if source_path == nil then
+      local direct_candidate =
+        extract_dir ..
+        "\\" ..
+        dll
 
-  -- Safe config/lua lifecycle: restore backup if available, create if missing
-  local lua_dir  = lua_folder(steam_root)
-  local lua_bak  = lua_backup(steam_root)
-
-  if exists(lua_bak) then
-    -- Restore backup instead of creating empty directory (data preservation)
-    if exists(lua_dir) then
-      log("INFO", "config/lua already exists — backup preserved, using existing")
-    else
-      rename(lua_bak, lua_dir)
-      log("INFO", "Restored config/lua from backup")
+      if exists(direct_candidate) then
+        source_path =
+          direct_candidate
+      end
     end
-  else
-    -- No backup exists — create new directory only if missing
-    if not exists(lua_dir) then
-      lumaforge.create_dir(lua_dir)
-      log("INFO", "Created empty config/lua directory")
+
+    if source_path == nil then
+      cleanup_temp_file(zip_path)
+
+      error(
+        "Required managed DLL was not found after extraction: " ..
+        dll
+      )
     end
+
+    local destination_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
+
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
+
+    -- Preserve an existing active file before installing
+    -- the downloaded version. Never touch directories here.
+    if exists(destination_path) then
+      if exists(backup_path) then
+        remove(backup_path)
+      end
+
+      rename(
+        destination_path,
+        backup_path
+      )
+
+      log(
+        "INFO",
+        "Backed up existing " ..
+        dll
+      )
+    end
+
+    rename(
+      source_path,
+      destination_path
+    )
+
+    if not exists(destination_path) then
+      error(
+        "Failed to install " ..
+        dll ..
+        " into Steam root"
+      )
+    end
+
+    log(
+      "INFO",
+      "Installed " ..
+      dll ..
+      " into Steam root"
+    )
   end
 
-  -- Cleanup temp files
-  log("DEBUG", "Cleaning up temp files")
-  pcall(function() remove(zip_path) end)
-  for _, f in ipairs(extracted) do
-    pcall(function() remove(extract_dir .. "\\" .. f) end)
-  end
+  -- This is the only shared-directory operation:
+  -- ensure config/lua exists, restore legacy lua.bak only
+  -- when lua is absent, and never touch config itself.
+  local lua_dir =
+    ensure_lua_folder(steam_root)
 
-  log("INFO", "Install complete")
-  return { success = true }
+  log(
+    "INFO",
+    "Steam Lua directory ready: " ..
+    lua_dir
+  )
+
+  verify_all_active_dlls(
+    steam_root,
+    "install"
+  )
+
+  cleanup_temp_file(zip_path)
+
+  log(
+    "INFO",
+    "Install complete"
+  )
+
+  return {
+    success = true,
+    status = "enabled",
+    version = tag_name
+  }
 end
 
 -- ============================================================================
 -- Enable
 -- ============================================================================
 
---- Restore .bak files to active .dll files and restore the config/lua
---- folder from its backup.  Skips files that are already active.
---- Safe no-op when already fully enabled.
 local function enable(steam_root)
-  log("INFO", "enable(steam_root=" .. steam_root .. ")")
+  validate_steam_root(steam_root)
+
+  log(
+    "INFO",
+    "enable(steam_root=" ..
+    steam_root ..
+    ")"
+  )
+
+  local config_dir =
+    config_folder(steam_root)
+
+  if not exists(config_dir) then
+    error(
+      "Steam config directory does not exist: " ..
+      config_dir
+    )
+  end
 
   local any_work = false
 
-  -- Rename .bak -> .dll for each managed DLL
   for _, dll in ipairs(MANAGED_DLLS) do
-    local dll_path = steam_root .. "\\" .. dll
-    local bak_path = dll_path .. ".bak"
+    local dll_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
 
-    if exists(bak_path) then
-      -- Remove active DLL if present (prevents rename collision)
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
+
+    if exists(backup_path) then
       if exists(dll_path) then
         remove(dll_path)
       end
-      rename(bak_path, dll_path)
+
+      rename(
+        backup_path,
+        dll_path
+      )
+
       any_work = true
-      log("INFO", "Enabled " .. dll)
+
+      log(
+        "INFO",
+        "Enabled " ..
+        dll
+      )
+    elseif not exists(dll_path) then
+      error(
+        "Cannot enable incomplete installation; " ..
+        dll ..
+        " and its backup are missing"
+      )
     end
   end
 
-  -- Safe config/lua lifecycle: restore backup if available, create if missing
-  local lua_dir = lua_folder(steam_root)
-  local lua_bak = lua_backup(steam_root)
+  -- Compatibility recovery:
+  -- - existing lua is preserved;
+  -- - legacy lua.bak is restored only if lua is absent;
+  -- - otherwise only lua is created inside existing config.
+  local lua_dir =
+    ensure_lua_folder(steam_root)
 
-  if exists(lua_bak) then
-    -- Backup exists: restore it
-    if not exists(lua_dir) then
-      rename(lua_bak, lua_dir)
-      any_work = true
-      log("INFO", "Restored config/lua from backup")
-    else
-      log("INFO", "config/lua already exists — backup preserved, using existing")
-    end
-  else
-    -- No backup: create if missing
-    if not exists(lua_dir) then
-      lumaforge.create_dir(lua_dir)
-      any_work = true
-      log("INFO", "Created empty config/lua directory")
-    end
-  end
+  log(
+    "INFO",
+    "Steam Lua directory ready: " ..
+    lua_dir
+  )
+
+  verify_all_active_dlls(
+    steam_root,
+    "enable"
+  )
 
   if not any_work then
-    log("INFO", "Already enabled — no work done")
+    log(
+      "INFO",
+      "Already enabled; no DLL changes were required"
+    )
   end
 
-  -- Verify: all DLLs should be active now
-  for _, dll in ipairs(MANAGED_DLLS) do
-    if not exists(steam_root .. "\\" .. dll) then
-      error("Verification failed: " .. dll .. " not found after enable")
-    end
-  end
-
-  return { success = true }
+  return {
+    success = true,
+    status = "enabled"
+  }
 end
 
 -- ============================================================================
 -- Disable
 -- ============================================================================
 
---- Move active .dll files to .bak and hide the config/lua folder.
---- Skips files already in the disabled state.  Safe no-op when already
---- fully disabled.
 local function disable(steam_root)
-  log("INFO", "disable(steam_root=" .. steam_root .. ")")
+  validate_steam_root(steam_root)
+
+  log(
+    "INFO",
+    "disable(steam_root=" ..
+    steam_root ..
+    ")"
+  )
 
   local any_work = false
 
-  -- Rename .dll -> .bak for each managed DLL
   for _, dll in ipairs(MANAGED_DLLS) do
-    local dll_path = steam_root .. "\\" .. dll
-    local bak_path = dll_path .. ".bak"
+    local dll_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
+
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
 
     if exists(dll_path) then
-      -- Remove stale .bak if present (pre-emptive to avoid rename collision)
-      if exists(bak_path) then
-        remove(bak_path)
+      if exists(backup_path) then
+        remove(backup_path)
       end
-      rename(dll_path, bak_path)
+
+      rename(
+        dll_path,
+        backup_path
+      )
+
       any_work = true
-      log("INFO", "Disabled " .. dll)
+
+      log(
+        "INFO",
+        "Disabled " ..
+        dll
+      )
+    elseif not exists(backup_path) then
+      error(
+        "Cannot disable incomplete installation; " ..
+        dll ..
+        " and its backup are missing"
+      )
     end
   end
 
-  -- Hide config/lua -> config/lua.bak (preserves user data)
-  local lua_dir = lua_folder(steam_root)
-  local lua_bak = lua_backup(steam_root)
+  -- config and config/lua are shared directories.
+  -- Disable must never move, rename, delete, clear,
+  -- recreate, or back up either directory.
+  log(
+    "INFO",
+    "Preserving shared Steam config and config/lua directories"
+  )
 
-  if exists(lua_dir) and exists(lua_bak) then
-    log("WARN", "Cannot hide config/lua: config/lua.bak already exists — leaving as-is")
-  elseif exists(lua_dir) then
-    rename(lua_dir, lua_bak)
-    any_work = true
-    log("INFO", "Moved config/lua to config/lua.bak")
-  end
+  verify_all_backup_dlls(
+    steam_root,
+    "disable"
+  )
 
   if not any_work then
-    log("INFO", "Already disabled — no work done")
+    log(
+      "INFO",
+      "Already disabled; no DLL changes were required"
+    )
   end
 
-  -- Verify: all DLLs should now be .bak
-  for _, dll in ipairs(MANAGED_DLLS) do
-    if not exists(steam_root .. "\\" .. dll .. ".bak") then
-      error("Verification failed: " .. dll .. ".bak not found after disable")
-    end
-  end
-
-  return { success = true }
+  return {
+    success = true,
+    status = "disabled"
+  }
 end
 
 -- ============================================================================
 -- Uninstall
 -- ============================================================================
 
---- Remove all managed DLLs (both .dll and .dll.bak) from the Steam root.
---- Also hides config/lua if it exists.  Works from any state (enabled,
---- disabled, or partially installed).
 local function uninstall(steam_root)
-  log("INFO", "uninstall(steam_root=" .. steam_root .. ")")
+  validate_steam_root(steam_root)
+
+  log(
+    "INFO",
+    "uninstall(steam_root=" ..
+    steam_root ..
+    ")"
+  )
 
   local any_work = false
 
-  -- Remove both .dll and .dll.bak for each managed DLL
   for _, dll in ipairs(MANAGED_DLLS) do
-    local dll_path = steam_root .. "\\" .. dll
-    local bak_path = dll_path .. ".bak"
+    local dll_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
+
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
 
     if exists(dll_path) then
       remove(dll_path)
       any_work = true
-      log("INFO", "Removed " .. dll)
+
+      log(
+        "INFO",
+        "Removed " ..
+        dll
+      )
     end
 
-    if exists(bak_path) then
-      remove(bak_path)
+    if exists(backup_path) then
+      remove(backup_path)
       any_work = true
-      log("INFO", "Removed " .. dll .. ".bak")
+
+      log(
+        "INFO",
+        "Removed " ..
+        dll ..
+        ".bak"
+      )
     end
   end
 
-  -- Hide config/lua -> config/lua.bak (preserves user data)
-  local lua_dir = lua_folder(steam_root)
-  local lua_bak = lua_backup(steam_root)
+  -- config and config/lua are shared directories.
+  -- Uninstall must never move, rename, delete, clear,
+  -- recreate, or back up either directory.
+  --
+  -- A legacy config/lua.bak is also preserved.
+  -- It may contain user data produced by an older
+  -- lifecycle implementation and must not be deleted.
+  log(
+    "INFO",
+    "Preserving Steam config, config/lua, and any legacy config/lua.bak"
+  )
 
-  if exists(lua_dir) and exists(lua_bak) then
-    log("WARN", "Cannot hide config/lua: config/lua.bak already exists — leaving as-is")
-  elseif exists(lua_dir) then
-    rename(lua_dir, lua_bak)
-    any_work = true
-    log("INFO", "Moved config/lua to config/lua.bak")
+  for _, dll in ipairs(MANAGED_DLLS) do
+    local dll_path =
+      managed_file_path(
+        steam_root,
+        dll
+      )
+
+    local backup_path =
+      managed_backup_path(
+        steam_root,
+        dll
+      )
+
+    if (
+      exists(dll_path) or
+      exists(backup_path)
+    ) then
+      error(
+        "Verification failed after uninstall: " ..
+        dll ..
+        " or " ..
+        dll ..
+        ".bak still exists"
+      )
+    end
   end
 
   if not any_work then
-    log("INFO", "Nothing to uninstall — already clean")
+    log(
+      "INFO",
+      "Nothing to uninstall; managed DLL files were already absent"
+    )
   end
 
-  -- Verify: no DLLs or .bak files should remain
-  for _, dll in ipairs(MANAGED_DLLS) do
-    local dll_path = steam_root .. "\\" .. dll
-    local bak_path = dll_path .. ".bak"
-    if exists(dll_path) or exists(bak_path) then
-      error("Verification failed: " .. dll .. " or " .. dll .. ".bak still exists after uninstall")
-    end
-  end
-
-  return { success = true }
+  return {
+    success = true,
+    status = "available"
+  }
 end
 
 -- ============================================================================
@@ -535,16 +1327,15 @@ end
 -- ============================================================================
 
 extension = {
-  -- Metadata (captured by load_and_evaluate into LuaExtensionTable)
-  id          = "opensteamtool-repo",
-  name        = "OpenSteamTool (Community)",
-  version     = "1.4.8",
-  description = "DLL-based Steam integration tool (independent Lua module)",
+  id = EXTENSION_ID,
+  name = "OpenSteamTool (Community)",
+  version = "1.4.8",
+  description =
+    "DLL-based Steam integration tool (independent Lua module)",
 
-  -- Lifecycle handlers (called by call_extension_* commands)
-  detect      = detect,
-  install     = install,
-  enable      = enable,
-  disable     = disable,
-  uninstall   = uninstall
+  detect = detect,
+  install = install,
+  enable = enable,
+  disable = disable,
+  uninstall = uninstall
 }
