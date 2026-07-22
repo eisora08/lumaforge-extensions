@@ -79,7 +79,7 @@
       "owner": "OpenSteam001",
       "repo": "OpenSteamTool",
       "tagPattern": "*",
-      "assetPattern": "*.zip",
+      "assetPattern": "*-Release.zip",
       "includePrereleases": false
     }
   },
