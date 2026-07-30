@@ -1,3 +1,6 @@
 {
-  "enabled": true
+  "enabled": true,
+  "manifestUrl": "https://raw.githubusercontent.com/eisora08/lumaforge-extensions/main/extensions/opensteamtool/manifest.json",
+  "source": "repository",
+  "sourceVersion": "1.4.8"
 }

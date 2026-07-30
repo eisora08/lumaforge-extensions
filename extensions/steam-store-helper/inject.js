@@ -1,4 +1,4 @@
-// Steam Store Helper — LumaForge Lite CEF injection payload v2.5.1-provider-results
+// Steam Store Helper — LumaForge Lite CEF injection payload v2.6.0-Auto-Update
 // Runs inside Steam's Chromium Embedded Framework browser context.
 // Self-contained, idempotent, teardown-safe.
 // All critical CSS uses inline styles to bypass Steam's CSP.
@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  var LUMA_INJECT_VERSION = '2.5.1-provider-results';
+  var LUMA_INJECT_VERSION = '2.6.0-Auto-Update';
   var DOCUMENT_ID = Date.now() + '-' + Math.random().toString(36).slice(2);
 
   var EXTENSION_ID = 'steam-store-helper';
@@ -63,6 +63,7 @@
     requestContext: null,
     downloadPollTimer: null,
     downloadPollSeq: 0,
+    providerStatsCache: null,
     popstateHandler: null,
     hashchangeHandler: null,
     pageshowHandler: null,
@@ -71,6 +72,7 @@
     _rafPending: false,
     reconcileCount: 0,
     documentId: DOCUMENT_ID,
+    savedFocusElement: null,
   };
 
   // ---------------------------------------------------------------------------
@@ -102,9 +104,12 @@
   function svgErrorCircle() {
     return '<svg width="48" height="48" viewBox="0 0 48 48" fill="none" stroke="#e74c3c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="24" r="20"/><path d="M18 18l12 12M30 18L18 30"/></svg>';
   }
+  function svgLock() {
+    return '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>';
+  }
 
   // ---------------------------------------------------------------------------
-  // Best-effort keyframe injection
+  // Theme-aware CSS variable system + keyframes + class styles
   // ---------------------------------------------------------------------------
   function ensureKeyframes() {
     try {
@@ -112,32 +117,216 @@
       var s = document.createElement('style');
       s.id = 'luma_ssh_kf';
       s.textContent =
+
+        // ── Theme-aware CSS variables with fallbacks ──
+        ':root{' +
+        '--luma-ssh-accent:#66c0ff;' +
+        '--luma-ssh-accent-dim:rgba(102,192,255,.32);' +
+        '--luma-ssh-accent-glow:rgba(102,192,255,.15);' +
+        '--luma-ssh-accent-strong:rgba(102,192,255,.82);' +
+        '--luma-ssh-bg-panel:#1b2838;' +
+        '--luma-ssh-bg-card:rgba(255,255,255,.03);' +
+        '--luma-ssh-bg-card-hover:rgba(255,255,255,.06);' +
+        '--luma-ssh-border:rgba(102,192,255,.15);' +
+        '--luma-ssh-border-strong:rgba(255,255,255,.06);' +
+        '--luma-ssh-text-primary:#fff;' +
+        '--luma-ssh-text:#c7d5e0;' +
+        '--luma-ssh-text-muted:#8f98a0;' +
+        '--luma-ssh-success:#64c882;' +
+        '--luma-ssh-success-bg:rgba(46,160,67,.15);' +
+        '--luma-ssh-error:#e74c3c;' +
+        '--luma-ssh-error-bg:rgba(231,76,60,.12);' +
+        '--luma-ssh-btn-bg:linear-gradient(180deg,#2478a8 0%,#17628f 100%);' +
+        '--luma-ssh-btn-bg-hover:linear-gradient(180deg,#32a9ed 0%,#1687c5 100%);' +
+        '--luma-ssh-btn-bg-active:linear-gradient(180deg,#1687c5 0%,#126b9c 100%);' +
+        '--luma-ssh-btn-text:#dff4ff;' +
+        '--luma-ssh-btn-shadow:0 1px 2px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);' +
+        '--luma-ssh-panel-shadow:0 8px 32px rgba(0,0,0,.6),0 0 60px var(--luma-ssh-accent-glow);' +
+        '}' +
+
+        // ── Keyframes ──
         '@keyframes luma_ssh_spin{to{transform:rotate(360deg)}}' +
         '@keyframes luma_ssh_fade{from{opacity:0}to{opacity:1}}' +
         '@keyframes luma_ssh_slide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}' +
 
+        // ── Action button ──
         '.luma-ssh-action-button:not([aria-disabled="true"]):hover{' +
-        'background:linear-gradient(180deg,#32a9ed 0%,#1687c5 100%)!important;' +
-        'border-color:rgba(130,215,255,.82)!important;' +
+        'background:var(--luma-ssh-btn-bg-hover)!important;' +
+        'border-color:var(--luma-ssh-accent-strong)!important;' +
         'color:#fff!important;' +
-        'box-shadow:0 0 12px rgba(42,174,243,.42),inset 0 1px 0 rgba(255,255,255,.18)!important;' +
+        'box-shadow:0 0 12px var(--luma-ssh-accent-glow),inset 0 1px 0 rgba(255,255,255,.18)!important;' +
         '}' +
 
         '.luma-ssh-action-button:not([aria-disabled="true"]):active{' +
         'transform:translateY(1px) scale(.985);' +
-        'background:linear-gradient(180deg,#1687c5 0%,#126b9c 100%)!important;' +
+        'background:var(--luma-ssh-btn-bg-active)!important;' +
         'box-shadow:0 1px 2px rgba(0,0,0,.4)!important;' +
         '}' +
 
         '.luma-ssh-action-button:focus-visible{' +
-        'outline:2px solid #9bddff!important;' +
+        'outline:2px solid var(--luma-ssh-accent)!important;' +
         'outline-offset:2px!important;' +
-        'box-shadow:0 0 0 3px rgba(43,174,243,.28)!important;' +
+        'box-shadow:0 0 0 3px var(--luma-ssh-accent-glow)!important;' +
         '}' +
 
         '.luma-ssh-action-button[aria-disabled="true"]{' +
         'cursor:default!important;' +
-        '}';
+        '}' +
+
+        // ── Modal panel box-sizing ──
+        '.luma-ssh-modal-panel,.luma-ssh-modal-panel *,' +
+        '.luma-ssh-modal-panel *::before,.luma-ssh-modal-panel *::after{' +
+        'box-sizing:border-box;' +
+        '}' +
+
+        // ── Source cards ──
+        '.luma-source-card{' +
+        'display:grid;' +
+        'grid-template-columns:42px minmax(0,1fr) auto;' +
+        'align-items:center;' +
+        'column-gap:14px;' +
+        'width:100%;' +
+        'max-width:100%;' +
+        'min-width:0;' +
+        'padding:14px 16px;' +
+        'margin-bottom:8px;' +
+        'background:rgba(255,255,255,.025);' +
+        'border:1px solid rgba(255,255,255,.06);' +
+        'border-radius:11px;' +
+        'cursor:pointer;' +
+        'transition:background .15s ease,border-color .15s ease,opacity .15s ease,box-shadow .15s ease;' +
+        'position:relative;' +
+        'overflow:visible;' +
+        '}' +
+
+        '.luma-source-card:hover{' +
+        'background:rgba(255,255,255,.05)!important;' +
+        'border-color:rgba(102,192,255,.18)!important;' +
+        'box-shadow:0 2px 12px rgba(0,0,0,.2);' +
+        '}' +
+
+        '.luma-source-card.blocked{' +
+        'opacity:.45!important;' +
+        'cursor:not-allowed!important;' +
+        'pointer-events:auto!important;' +
+        '}' +
+
+        '.luma-source-card.blocked:hover{' +
+        'background:rgba(255,255,255,.05)!important;' +
+        'border-color:rgba(231,76,60,.2)!important;' +
+        'opacity:.6!important;' +
+        'box-shadow:none!important;' +
+        '}' +
+
+        // ── Source tooltip (contained) ──
+        '.luma-source-tooltip{' +
+        'position:absolute;' +
+        'bottom:calc(100% + 8px);' +
+        'left:50%;' +
+        'transform:translateX(-50%);' +
+        'background:#1b2838;' +
+        'border:1px solid rgba(102,192,255,.2);' +
+        'border-radius:6px;' +
+        'padding:8px 12px;' +
+        'font-size:11px;' +
+        'color:#c7d5e0;' +
+        'white-space:normal;' +
+        'width:max-content;' +
+        'max-width:min(320px,calc(100vw - 32px));' +
+        'overflow-wrap:anywhere;' +
+        'box-shadow:0 4px 16px rgba(0,0,0,.6);' +
+        'z-index:10;' +
+        'pointer-events:none;' +
+        'opacity:0;' +
+        'transition:opacity .15s ease;' +
+        '}' +
+
+        '.luma-source-card:hover .luma-source-tooltip{' +
+        'opacity:1;' +
+        '}' +
+
+        '.luma-source-expiry{' +
+        'display:inline-flex;' +
+        'align-items:center;' +
+        'gap:4px;' +
+        'padding:2px 8px;' +
+        'border-radius:8px;' +
+        'font-size:10px;' +
+        'font-weight:700;' +
+        'white-space:nowrap;' +
+        'margin-top:4px;' +
+        '}' +
+
+        '.luma-source-expiry.ok{' +
+        'background:rgba(46,160,67,.12);' +
+        'color:var(--luma-ssh-success);' +
+        '}' +
+
+        '.luma-source-expiry.warning{' +
+        'background:rgba(255,180,0,.12);' +
+        'color:#ffb400;' +
+        '}' +
+
+        '.luma-source-expiry.expired{' +
+        'background:var(--luma-ssh-error-bg);' +
+        'color:var(--luma-ssh-error);' +
+        '}' +
+
+        // ── Usage info chips ──
+        '.luma-usage-chips{' +
+        'display:flex;' +
+        'flex-wrap:wrap;' +
+        'gap:6px;' +
+        'min-width:0;' +
+        'margin-top:5px;' +
+        '}' +
+        '.luma-usage-chip{' +
+        'display:inline-flex;' +
+        'align-items:center;' +
+        'gap:3px;' +
+        'padding:2px 7px;' +
+        'border-radius:6px;' +
+        'font-size:10px;' +
+        'font-weight:600;' +
+        'color:#66c0f4;' +
+        'background:rgba(102,192,255,.08);' +
+        'white-space:nowrap;' +
+        '}' +
+
+        // ── Close button hover ──
+        '.luma-ssh-close-btn:hover{' +
+        'background:rgba(255,255,255,.08)!important;' +
+        'color:#fff!important;' +
+        '}' +
+        '.luma-ssh-close-btn:focus-visible{' +
+        'outline:2px solid var(--luma-ssh-accent);' +
+        'outline-offset:2px;' +
+        '}' +
+
+        // ── Modal scrollbar ──
+        '.luma-ssh-modal-body{' +
+        'scrollbar-width:thin;' +
+        'scrollbar-color:rgba(102,192,255,.25) transparent;' +
+        '}' +
+        '.luma-ssh-modal-body::-webkit-scrollbar{width:6px;}' +
+        '.luma-ssh-modal-body::-webkit-scrollbar-track{background:transparent;}' +
+        '.luma-ssh-modal-body::-webkit-scrollbar-thumb{' +
+        'background:rgba(102,192,255,.25);border-radius:3px;' +
+        '}' +
+        '.luma-ssh-modal-body::-webkit-scrollbar-thumb:hover{' +
+        'background:rgba(102,192,255,.4);' +
+        '}' +
+
+        // ── Responsive media queries ──
+        '@media(max-width:520px){' +
+        '.luma-ssh-modal-backdrop{padding:10px!important;}' +
+        '.luma-ssh-modal-panel{border-radius:12px!important;}' +
+        '.luma-ssh-source-card{grid-template-columns:40px minmax(0,1fr);}' +
+        '.luma-ssh-source-card .luma-source-badge-wrap{grid-column:1/-1;margin-top:4px;justify-self:start;}' +
+        '.luma-ssh-success-actions,.luma-ssh-error-actions{flex-wrap:wrap;}' +
+        '.luma-ssh-success-actions button,.luma-ssh-error-actions button{width:100%;justify-content:center;}' +
+        '}' +
+        '';
       (document.head || document.documentElement).appendChild(s);
     } catch (_) { }
   }
@@ -146,54 +335,56 @@
   // Inline style constants
   // ---------------------------------------------------------------------------
   var ST = {
-    btn: 'display:inline-flex;align-items:center;gap:7px;padding:7px 16px;margin-left:10px;border:1px solid rgba(102,192,255,.32);border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:linear-gradient(180deg,#2478a8 0%,#17628f 100%);color:#dff4ff;box-shadow:0 1px 2px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08);vertical-align:middle;position:relative;z-index:1;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,transform .08s ease,color .16s ease;',
-    btnSuccess: 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px;margin-left:10px;border:none;border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:linear-gradient(to right,#2ea043,#64c882);color:#fff;box-shadow:0 0 8px rgba(100,200,130,.3);vertical-align:middle;position:relative;z-index:1;',
-    btnInstalled: 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px;margin-left:10px;border:1px solid rgba(100,200,130,.3);border-radius:3px;cursor:default;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:rgba(46,160,67,.1);color:#64c882;vertical-align:middle;position:relative;z-index:1;opacity:.7;pointer-events:none;',
+    btn: 'display:inline-flex;align-items:center;gap:7px;padding:7px 16px;margin-left:10px;border:1px solid var(--luma-ssh-accent-dim,rgba(102,192,255,.32));border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:var(--luma-ssh-btn-bg,linear-gradient(180deg,#2478a8 0%,#17628f 100%));color:var(--luma-ssh-btn-text,#dff4ff);box-shadow:var(--luma-ssh-btn-shadow,0 1px 2px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.08));vertical-align:middle;position:relative;z-index:1;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,transform .08s ease,color .16s ease;flex-shrink:0;',
+    btnSuccess: 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px;margin-left:10px;border:none;border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:linear-gradient(to right,var(--luma-ssh-success,#2ea043),var(--luma-ssh-success,#64c882));color:#fff;box-shadow:0 0 8px rgba(100,200,130,.3);vertical-align:middle;position:relative;z-index:1;flex-shrink:0;',
+    btnInstalled: 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px;margin-left:10px;border:1px solid rgba(100,200,130,.3);border-radius:3px;cursor:default;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:rgba(46,160,67,.1);color:var(--luma-ssh-success,#64c882);vertical-align:middle;position:relative;z-index:1;opacity:.7;pointer-events:none;flex-shrink:0;',
 
-    backdrop: 'position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.75);animation:luma_ssh_fade .2s ease-out;font-family:\'Motiva Sans\',Arial,sans-serif;box-sizing:border-box;',
-    panel: 'background:#1b2838;color:#c7d5e0;border:1px solid rgba(102,192,255,.15);border-radius:8px;width:480px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 8px 32px rgba(0,0,0,.6),0 0 60px rgba(102,192,255,.08);overflow:hidden;animation:luma_ssh_slide .25s ease-out;box-sizing:border-box;',
-    header: 'display:flex;align-items:center;gap:10px;padding:18px 20px 14px;border-bottom:1px solid rgba(102,192,255,.1);',
-    headerIcon: 'width:22px;height:22px;color:#66c0ff;flex-shrink:0;display:flex;align-items:center;justify-content:center;',
-    headerTitle: 'font-size:16px;font-weight:700;color:#fff;flex:1;margin:0;',
-    closeBtn: 'background:none;border:none;cursor:pointer;padding:4px;color:#8f98a0;display:flex;align-items:center;justify-content:center;border-radius:4px;margin-left:auto;',
-    body: 'padding:20px;flex:1;overflow-y:auto;min-height:80px;box-sizing:border-box;',
-    loading: 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px 0;',
-    loadingText: 'font-size:13px;color:#8f98a0;',
-    errorWrap: 'text-align:center;padding:20px 0;',
-    errorMsg: 'color:#e74c3c;font-size:13px;margin-bottom:4px;',
-    errorDetail: 'color:#8f98a0;font-size:11px;margin-top:6px;font-family:monospace;word-break:break-all;max-height:60px;overflow-y:auto;',
-    retryBtn: 'background:none;border:1px solid rgba(102,192,255,.3);color:#66c0ff;padding:6px 16px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-top:10px;',
-    card: 'display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;cursor:pointer;',
-    cardIcon: 'width:36px;height:36px;border-radius:6px;background:rgba(102,192,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#66c0ff;',
-    cardInfo: 'flex:1;min-width:0;',
-    cardName: 'font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
-    cardDetail: 'font-size:11px;color:#8f98a0;margin-top:2px;',
-    badgeAvail: 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;background:rgba(46,160,67,.15);color:#64c882;box-shadow:0 0 8px rgba(46,160,67,.2);',
-    badgeUnavail: 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;background:rgba(255,255,255,.05);color:#8f98a0;',
-    footer: 'padding:14px 20px;border-top:1px solid rgba(102,192,255,.1);display:flex;justify-content:flex-end;',
-    cancelBtn: 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:#c7d5e0;padding:8px 20px;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;',
-    progressWrap: 'padding:24px 0;text-align:center;',
-    progressLabel: 'font-size:13px;color:#8f98a0;margin-bottom:8px;',
-    progressBar: 'width:100%;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;margin:12px 0;',
-    progressFill: 'height:100%;background:linear-gradient(to right,#1a9fff,#66c0ff);border-radius:3px;transition:width .3s ease;width:0%;',
-    successWrap: 'text-align:center;padding:28px 0 12px;',
-    successIcon: 'width:52px;height:52px;border-radius:50%;background:rgba(46,160,67,.15);display:flex;align-items:center;justify-content:center;color:#64c882;margin:0 auto 16px;box-shadow:0 0 20px rgba(46,160,67,.2);',
-    successTitle: 'font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;',
-    successDetail: 'font-size:12px;color:#8f98a0;margin-bottom:20px;',
-    successActions: 'display:flex;gap:12px;justify-content:center;',
-    primaryBtn: 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.3px;background:linear-gradient(to right,#1a9fff,#66c0ff);color:#fff;box-shadow:0 0 8px rgba(102,192,255,.25);',
-    secondaryBtn: 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:1px solid rgba(102,192,255,.3);border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:transparent;color:#66c0ff;',
+    backdrop: 'position:fixed;inset:0;width:100%;height:100%;padding:20px;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(5,10,17,.78);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow-y:auto;overflow-x:hidden;font-family:\'Motiva Sans\',Arial,sans-serif;',
+    panel: 'background:radial-gradient(circle at top left,rgba(102,192,255,.08),transparent 42%),linear-gradient(165deg,#18283a 0%,#132131 55%,#101b29 100%);color:var(--luma-ssh-text,#c7d5e0);border:1px solid rgba(125,196,238,.18);border-radius:16px;width:min(520px,calc(100vw - 32px));max-height:min(80vh,calc(100vh - 40px));display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(0,0,0,.58),0 8px 28px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.045);overflow:hidden;animation:luma_ssh_slide .25s ease-out;flex-shrink:0;',
+    header: 'display:flex;align-items:flex-start;gap:12px;padding:18px 20px 14px;border-bottom:1px solid rgba(102,192,255,.1);min-width:0;',
+    headerIcon: 'width:40px;height:40px;border-radius:10px;background:rgba(102,192,255,.1);border:1px solid rgba(102,192,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--luma-ssh-accent,#66c0ff);',
+    headerTitle: 'font-size:17px;font-weight:700;color:var(--luma-ssh-text-primary,#fff);min-width:0;line-height:1.3;',
+    headerSubtitle: 'font-size:11px;color:var(--luma-ssh-text-muted,#8f98a0);margin-top:2px;line-height:1.3;',
+    headerVersion: 'display:inline-flex;align-items:center;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:600;background:rgba(102,192,255,.1);color:var(--luma-ssh-accent,#66c0ff);flex-shrink:0;white-space:nowrap;margin-top:4px;',
+    closeBtn: 'background:none;border:none;cursor:pointer;padding:6px;color:var(--luma-ssh-text-muted,#8f98a0);display:flex;align-items:center;justify-content:center;border-radius:6px;margin-left:auto;flex-shrink:0;transition:background .12s ease,color .12s ease;',
+    body: 'padding:16px 20px;flex:1;overflow-y:auto;overflow-x:hidden;min-height:60px;',
+    loading: 'display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:28px 0;',
+    loadingText: 'font-size:13px;color:var(--luma-ssh-text-muted,#8f98a0);',
     errorWrap: 'text-align:center;padding:28px 0 12px;',
-    errorIcon: 'width:52px;height:52px;border-radius:50%;background:rgba(231,76,60,.12);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 0 20px rgba(231,76,60,.15);',
-    errorTitle: 'font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;',
-    errorMsgNew: 'font-size:12px;color:#e74c3c;margin-bottom:20px;',
-    errorActions: 'display:flex;gap:12px;justify-content:center;',
+    errorMsg: 'color:var(--luma-ssh-error,#e74c3c);font-size:13px;margin-bottom:4px;',
+    errorDetail: 'color:var(--luma-ssh-text-muted,#8f98a0);font-size:11px;margin-top:6px;font-family:monospace;word-break:break-word;max-height:60px;overflow-y:auto;',
+    retryBtn: 'background:none;border:1px solid var(--luma-ssh-accent-dim,rgba(102,192,255,.3));color:var(--luma-ssh-accent,#66c0ff);padding:6px 16px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-top:10px;',
+    cardIcon: 'width:42px;height:42px;border-radius:10px;background:rgba(102,192,255,.08);border:1px solid rgba(102,192,255,.1);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--luma-ssh-accent,#66c0ff);',
+    cardInfo: 'min-width:0;overflow:hidden;',
+    cardName: 'font-size:14px;font-weight:600;color:var(--luma-ssh-text-primary,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+    cardDetail: 'font-size:11px;color:var(--luma-ssh-text-muted,#8f98a0);margin-top:2px;overflow-wrap:anywhere;word-break:break-word;',
+    badgeAvail: 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;background:var(--luma-ssh-success-bg,rgba(46,160,67,.15));color:var(--luma-ssh-success,#64c882);box-shadow:0 0 8px rgba(46,160,67,.2);',
+    badgeUnavail: 'display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:12px;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0;background:rgba(255,255,255,.05);color:var(--luma-ssh-text-muted,#8f98a0);',
+    footer: 'padding:12px 20px;border-top:1px solid rgba(102,192,255,.08);display:flex;align-items:center;justify-content:space-between;width:100%;overflow:hidden;background:rgba(0,0,0,.15);',
+    footerNote: 'font-size:10px;color:var(--luma-ssh-text-muted,#8f98a0);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;',
+    cancelBtn: 'background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--luma-ssh-text,#c7d5e0);padding:8px 20px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;transition:background .12s ease,border-color .12s ease;flex-shrink:0;',
+    progressWrap: 'padding:28px 0;text-align:center;',
+    progressLabel: 'font-size:13px;color:var(--luma-ssh-text-muted,#8f98a0);margin-bottom:8px;',
+    progressBar: 'width:100%;height:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.04);border-radius:3px;overflow:hidden;margin:12px 0;',
+    progressFill: 'height:100%;background:linear-gradient(to right,rgba(26,159,255,.9),rgba(102,192,255,.9));border-radius:3px;transition:width .3s ease;width:0%;',
+    successWrap: 'text-align:center;padding:28px 0 16px;',
+    successIcon: 'width:52px;height:52px;border-radius:50%;background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.15);display:flex;align-items:center;justify-content:center;color:var(--luma-ssh-success,#64c882);margin:0 auto 16px;box-shadow:0 0 20px rgba(46,160,67,.15);',
+    successTitle: 'font-size:16px;font-weight:700;color:var(--luma-ssh-text-primary,#fff);margin-bottom:6px;',
+    successDetail: 'font-size:12px;color:var(--luma-ssh-text-muted,#8f98a0);margin-bottom:20px;overflow-wrap:anywhere;word-break:break-word;',
+    successActions: 'display:flex;gap:12px;justify-content:center;flex-wrap:wrap;',
+    primaryBtn: 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.3px;background:linear-gradient(to right,var(--luma-ssh-accent,#1a9fff),var(--luma-ssh-accent,#66c0ff));color:var(--luma-ssh-text-primary,#fff);box-shadow:0 0 8px var(--luma-ssh-accent-glow,rgba(102,192,255,.25));min-width:0;overflow:hidden;',
+    secondaryBtn: 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:1px solid var(--luma-ssh-accent-dim,rgba(102,192,255,.3));border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:transparent;color:var(--luma-ssh-accent,#66c0ff);min-width:0;overflow:hidden;',
+    errorIcon: 'width:52px;height:52px;border-radius:50%;background:var(--luma-ssh-error-bg,rgba(231,76,60,.12));border:1px solid rgba(231,76,60,.15);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 0 20px rgba(231,76,60,.12);',
+    errorTitle: 'font-size:16px;font-weight:700;color:var(--luma-ssh-text-primary,#fff);margin-bottom:6px;',
+    errorMsgNew: 'font-size:12px;color:var(--luma-ssh-error,#e74c3c);margin-bottom:20px;overflow-wrap:anywhere;word-break:break-word;',
+    errorActions: 'display:flex;gap:12px;justify-content:center;flex-wrap:wrap;',
   };
 
   function dot(hue) {
-    var c = hue === 'green' ? '#64c882;box-shadow:0 0 6px rgba(46,160,67,.6)' :
-      hue === 'blue' ? '#66c0ff;box-shadow:0 0 6px rgba(102,192,255,.6)' :
-        hue === 'red' ? '#e74c3c;box-shadow:0 0 6px rgba(231,76,60,.6)' : '#8f98a0';
+    var c = hue === 'green' ? 'var(--luma-ssh-success,#64c882);box-shadow:0 0 6px rgba(46,160,67,.6)' :
+      hue === 'blue' ? 'var(--luma-ssh-accent,#66c0ff);box-shadow:0 0 6px rgba(102,192,255,.6)' :
+        hue === 'red' ? 'var(--luma-ssh-error,#e74c3c);box-shadow:0 0 6px rgba(231,76,60,.6)' :
+          'var(--luma-ssh-text-muted,#8f98a0)';
     return '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:' + c + ';"></span>';
   }
 
@@ -300,7 +491,7 @@
     return minutes + 'm';
   }
   function bridgeUrl(path) {
-    return BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + BRIDGE_PORT + path;
+    return '/luma-bridge' + path;
   }
 
   function sourcesUrl(appId) {
@@ -325,6 +516,20 @@
 
   function openLibraryUrl(appId) {
     return bridgeUrl('/api/open-library/' + appId);
+  }
+
+  function providerStatsUrl() {
+    return bridgeUrl('/api/provider-stats');
+  }
+
+  function getModalBody() {
+    return document.querySelector(
+      '[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] [data-lumaforge-modal-body="true"]'
+    );
+  }
+
+  function getModalBadge(card) {
+    return card ? card.querySelector('[data-lumaforge-source-badge="true"]') : null;
   }
 
   // ---------------------------------------------------------------------------
@@ -873,6 +1078,10 @@
       stopDownloadPoll();
       var m = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"]');
       if (m) m.remove();
+      if (state.savedFocusElement && state.savedFocusElement.isConnected) {
+        state.savedFocusElement.focus();
+      }
+      state.savedFocusElement = null;
     } catch (e) { console.error('[CEF_INJECT_ERROR] closeModal:', e); }
   }
 
@@ -883,14 +1092,24 @@
     try {
       console.log('[LUMA_INJECT] Opening modal for AppID:', appId);
 
+      state.savedFocusElement = document.activeElement;
       closeModal();
 
       var backdrop = document.createElement('div');
       backdrop.setAttribute(MODAL_MARKER_ATTR, MODAL_MARKER_VAL);
+      backdrop.setAttribute('class', 'luma-ssh-modal-backdrop');
       backdrop.setAttribute('style', ST.backdrop);
 
       var panel = document.createElement('div');
+      panel.setAttribute('class', 'luma-ssh-modal-panel');
       panel.setAttribute('style', ST.panel);
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-modal', 'true');
+
+      var titleId = 'luma-modal-title-' + appId;
+      var descId = 'luma-modal-desc-' + appId;
+      panel.setAttribute('aria-labelledby', titleId);
+      panel.setAttribute('aria-describedby', descId);
       panel.addEventListener('click', function (e) { e.stopPropagation(); });
 
       var header = document.createElement('div');
@@ -898,24 +1117,44 @@
       var hdrIcon = document.createElement('span');
       hdrIcon.setAttribute('style', ST.headerIcon);
       hdrIcon.innerHTML = svgCloudDownload();
-      var hdrTitle = document.createElement('span');
+      var hdrTextWrap = document.createElement('div');
+      hdrTextWrap.setAttribute('style', 'min-width:0;flex:1;');
+      var hdrTitle = document.createElement('div');
+      hdrTitle.id = titleId;
       hdrTitle.setAttribute('style', ST.headerTitle);
       hdrTitle.textContent = 'Select Download Source';
+      var hdrSubtitle = document.createElement('div');
+      hdrSubtitle.id = descId;
+      hdrSubtitle.setAttribute('style', ST.headerSubtitle);
+      hdrSubtitle.textContent = 'Choose a trusted provider for this package';
+      hdrTextWrap.appendChild(hdrTitle);
+      hdrTextWrap.appendChild(hdrSubtitle);
 
-      var hdrVersion = document.createElement('div');
-      hdrVersion.setAttribute('style', 'font-size:10px;color:#8f98a0;margin-top:2px;');
-      hdrVersion.textContent = 'Runtime: ' + LUMA_INJECT_VERSION;
+      var hdrVersion = document.createElement('span');
+      hdrVersion.setAttribute('style', ST.headerVersion);
+      var verParts = (LUMA_INJECT_VERSION || '').split('-');
+      hdrVersion.textContent = 'v' + (verParts[0] || LUMA_INJECT_VERSION);
+
       var closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('class', 'luma-ssh-close-btn');
       closeBtn.setAttribute('style', ST.closeBtn);
       closeBtn.setAttribute('aria-label', 'Close');
       closeBtn.innerHTML = svgX();
       closeBtn.addEventListener('click', closeModal);
+
+      var headerRight = document.createElement('div');
+      headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;');
+      headerRight.appendChild(hdrVersion);
+      headerRight.appendChild(closeBtn);
+
       header.appendChild(hdrIcon);
-      header.appendChild(hdrTitle);
-      header.appendChild(hdrVersion);
-      header.appendChild(closeBtn);
+      header.appendChild(hdrTextWrap);
+      header.appendChild(headerRight);
 
       var body = document.createElement('div');
+      body.setAttribute('class', 'luma-ssh-modal-body');
+      body.setAttribute('data-lumaforge-modal-body', 'true');
       body.setAttribute('style', ST.body);
       body.innerHTML =
         '<div style="' + ST.loading + '">' +
@@ -925,10 +1164,15 @@
 
       var footer = document.createElement('div');
       footer.setAttribute('style', ST.footer);
+      var footerNote = document.createElement('span');
+      footerNote.setAttribute('style', ST.footerNote);
+      footerNote.textContent = 'Packages are installed through LumaForge';
       var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
       cancelBtn.setAttribute('style', ST.cancelBtn);
       cancelBtn.textContent = 'Cancel';
       cancelBtn.addEventListener('click', closeModal);
+      footer.appendChild(footerNote);
       footer.appendChild(cancelBtn);
 
       panel.appendChild(header);
@@ -938,6 +1182,9 @@
 
       (document.body || document.documentElement).appendChild(backdrop);
       console.log('[LUMA_INJECT] Modal appended to document.body');
+
+      try { closeBtn.focus(); } catch (_) { }
+      try { logModalHorizontalOverflow(); } catch (_) { }
 
       console.log("[PROVIDER_FETCH] VERSION:", LUMA_INJECT_VERSION);
       console.log("[PROVIDER_FETCH] METHOD:", "GET");
@@ -1015,38 +1262,52 @@
             unavailableSources.length
           );
 
-          if (data && data.ok === true) {
-            console.log(
-              '[PROVIDER_FETCH] Calling renderSources'
-            );
-
-            renderSources(
-              body,
-              sources,
-              unavailableSources,
-              appId,
-              data.message || null
-            );
-
-            console.log(
-              '[PROVIDER_FETCH] renderSources completed'
-            );
-
-            if (
-              state.providerAbortController ===
-              providerController
-            ) {
-              state.providerAbortController = null;
+          function renderWithStats(providerStats) {
+            if (data && data.ok === true) {
+              renderSources(
+                body,
+                sources,
+                unavailableSources,
+                appId,
+                data.message || null,
+                providerStats || null
+              );
+              if (
+                state.providerAbortController ===
+                providerController
+              ) {
+                state.providerAbortController = null;
+              }
+              return;
             }
-
-            return;
+            throw new Error(
+              data && data.message
+                ? data.message
+                : 'Invalid response from bridge'
+            );
           }
 
-          throw new Error(
-            data && data.message
-              ? data.message
-              : 'Invalid response from bridge'
-          );
+          fetch(providerStatsUrl(), {
+            method: 'GET',
+            mode: 'cors',
+            cache: 'no-store',
+            signal: providerController.signal,
+          })
+            .then(function (r) {
+              if (!r.ok) return null;
+              return r.json();
+            })
+            .then(function (statsData) {
+              if (providerController.signal.aborted) return;
+              var providerStats = (statsData && statsData.ok && Array.isArray(statsData.providers))
+                ? statsData.providers
+                : null;
+              state.providerStatsCache = providerStats;
+              renderWithStats(providerStats);
+            })
+            .catch(function () {
+              renderWithStats(null);
+            });
         })
         .catch(function (error) {
           clearTimeout(providerTimeout);
@@ -1137,7 +1398,8 @@
     sources,
     unavailableSources,
     appId,
-    message
+    message,
+    providerStats
   ) {
     try {
       console.log(
@@ -1154,55 +1416,105 @@
         }
       );
 
-      if (!sources || !sources.length) {
-        var unavailableDetails = '';
+      function findProviderStat(sourceId) {
+        if (!providerStats || !sourceId) return null;
+        for (var i = 0; i < providerStats.length; i++) {
+          if (providerStats[i].id === sourceId) return providerStats[i];
+        }
+        return null;
+      }
 
-        if (
-          unavailableSources &&
-          unavailableSources.length
-        ) {
-          unavailableDetails =
-            '<div style="margin-top:12px;text-align:left;">' +
-            unavailableSources
-              .map(function (source) {
-                var sourceName =
-                  source.name ||
-                  source.id ||
-                  'Provider';
+      function buildBlockedCard(source) {
+        var sourceId = source.id || '';
+        var sourceName = source.name || sourceId || 'Provider';
+        var reason = source.detail || 'Package not available';
+        var pstat = findProviderStat(sourceId);
 
-                var reason =
-                  source.detail ||
-                  'Package not available';
+        var card = document.createElement('div');
+        card.className = 'luma-source-card blocked';
+        card.setAttribute('data-lumaforge-source-id', sourceId);
 
-                return (
-                  '<div style="' +
-                  'margin-top:6px;' +
-                  'padding:8px 10px;' +
-                  'background:rgba(255,255,255,.03);' +
-                  'border:1px solid rgba(255,255,255,.06);' +
-                  'border-radius:4px;' +
-                  '">' +
-                  '<div style="' +
-                  'color:#c7d5e0;' +
-                  'font-size:12px;' +
-                  'font-weight:600;' +
-                  '">' +
-                  sourceName +
-                  '</div>' +
-                  '<div style="' +
-                  'color:#8f98a0;' +
-                  'font-size:11px;' +
-                  'margin-top:2px;' +
-                  '">' +
-                  reason +
-                  '</div>' +
-                  '</div>'
-                );
-              })
-              .join('') +
-            '</div>';
+        var icon = document.createElement('div');
+        icon.setAttribute('style', ST.cardIcon + 'color:var(--luma-ssh-text-muted,#8f98a0);');
+        icon.innerHTML = svgLock();
+
+        var info = document.createElement('div');
+        info.setAttribute('style', ST.cardInfo);
+        var name = document.createElement('div');
+        name.setAttribute('style', ST.cardName + 'color:var(--luma-ssh-text-muted,#8f98a0);');
+        name.textContent = sourceName;
+        var detail = document.createElement('div');
+        detail.setAttribute('style', ST.cardDetail);
+        detail.textContent = reason;
+        info.appendChild(name);
+        info.appendChild(detail);
+
+        if (pstat && pstat.hasKey && pstat.apiKeyExpiresAt) {
+          var expMs = Date.parse(pstat.apiKeyExpiresAt);
+          var nowMs = Date.now();
+          var remainingMs = expMs - nowMs;
+          var expiryClass = 'ok';
+          var expiryText = '';
+
+          if (remainingMs <= 0) {
+            expiryClass = 'expired';
+            expiryText = 'API Key Expired';
+          } else {
+            var days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+            var hours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            expiryText = 'Key expires in ' + days + 'd ' + hours + 'h';
+            if (days < 3) expiryClass = 'warning';
+          }
+
+          var usageParts = [];
+          if (pstat.remainingToday != null && pstat.dailyLimit != null && pstat.dailyLimit > 0) {
+            usageParts.push(pstat.remainingToday + '/' + pstat.dailyLimit + ' downloads today');
+          }
+          if (pstat.canMakeRequests === false) {
+            usageParts.push('Requests unavailable');
+          }
+
+          var expiryBadge = document.createElement('div');
+          expiryBadge.className = 'luma-source-expiry ' + expiryClass;
+          expiryBadge.textContent = expiryText;
+          info.appendChild(expiryBadge);
+
+          if (usageParts.length > 0) {
+            var usageLine = document.createElement('div');
+            usageLine.className = 'luma-usage-chips';
+            usageParts.forEach(function(part) {
+              var chip = document.createElement('span');
+              chip.className = 'luma-usage-chip';
+              chip.textContent = part;
+              usageLine.appendChild(chip);
+            });
+            info.appendChild(usageLine);
+          }
+        } else if (pstat && !pstat.hasKey) {
+          var noKeyLine = document.createElement('div');
+          noKeyLine.setAttribute('style', 'font-size:10px;color:var(--luma-ssh-error,#e74c3c);margin-top:3px;');
+          noKeyLine.textContent = 'No API key configured';
+          info.appendChild(noKeyLine);
         }
 
+        var badge = document.createElement('div');
+        badge.setAttribute('data-lumaforge-source-badge', 'true');
+        badge.setAttribute('style', ST.badgeUnavail);
+        badge.innerHTML = svgLock() + '<span>Unavailable</span>';
+
+        var tooltip = document.createElement('div');
+        tooltip.className = 'luma-source-tooltip';
+        tooltip.textContent = sourceName + ': ' + reason;
+
+        card.appendChild(icon);
+        card.appendChild(info);
+        card.appendChild(badge);
+        card.appendChild(tooltip);
+
+        return card;
+      }
+
+      if (!sources || !sources.length) {
         body.innerHTML =
           '<div style="' + ST.errorWrap + '">' +
           '<div style="' + ST.errorMsg + '">' +
@@ -1214,8 +1526,16 @@
             'No enabled provider currently has a package for this App ID.'
           ) +
           '</div>' +
-          unavailableDetails +
           '</div>';
+
+        if (unavailableSources && unavailableSources.length) {
+          var unavailWrap = document.createElement('div');
+          unavailWrap.setAttribute('style', 'margin-top:12px;');
+          unavailableSources.forEach(function (src) {
+            unavailWrap.appendChild(buildBlockedCard(src));
+          });
+          body.appendChild(unavailWrap);
+        }
 
         console.log(
           '[PROVIDER_RENDER] Empty-source state rendered'
@@ -1239,13 +1559,11 @@
 
 
         var card = document.createElement('div');
+        card.className = 'luma-source-card';
 
-        card.setAttribute(
-          'style',
-          selectable
-            ? ST.card
-            : ST.card + 'opacity:.45;cursor:default;'
-        );
+        if (!selectable) {
+          card.setAttribute('style', 'opacity:.45;cursor:default;');
+        }
 
         card.setAttribute('data-lumaforge-source-id', src.id);
 
@@ -1280,30 +1598,44 @@
         }
         info.appendChild(name);
         info.appendChild(detail);
-        var usage = src.usage || null;
 
-        if (usage) {
+        var cardSourceStats = null;
+        if (src.usage) {
+          cardSourceStats = src.usage;
+        } else {
+          var pstat = findProviderStat(src.id);
+          if (pstat && pstat.hasKey) {
+            cardSourceStats = {
+              remaining_today: pstat.remainingToday,
+              daily_limit: pstat.dailyLimit,
+              api_key_expires_at: pstat.apiKeyExpiresAt,
+              can_make_requests: pstat.canMakeRequests,
+            };
+          }
+        }
+
+        if (cardSourceStats) {
           var usageParts = [];
 
           var remainingToday = Number(
-            usage.remaining_today != null
-              ? usage.remaining_today
-              : usage.remainingToday
+            cardSourceStats.remaining_today != null
+              ? cardSourceStats.remaining_today
+              : cardSourceStats.remainingToday
           );
 
           var dailyLimit = Number(
-            usage.daily_limit != null
-              ? usage.daily_limit
-              : usage.dailyLimit
+            cardSourceStats.daily_limit != null
+              ? cardSourceStats.daily_limit
+              : cardSourceStats.dailyLimit
           );
 
           var expiresAt =
-            usage.api_key_expires_at ||
-            usage.apiKeyExpiresAt ||
+            cardSourceStats.api_key_expires_at ||
+            cardSourceStats.apiKeyExpiresAt ||
             null;
 
           var serverTimestamp =
-            usage.timestamp || null;
+            cardSourceStats.timestamp || null;
 
           if (
             Number.isFinite(remainingToday) &&
@@ -1331,32 +1663,27 @@
             );
           }
 
-          if (usage.can_make_requests === false) {
+          if (cardSourceStats.can_make_requests === false) {
             usageParts.push('Requests unavailable');
           }
 
           if (usageParts.length > 0) {
             var usageDetail = document.createElement('div');
-
-            usageDetail.setAttribute(
-              'style',
-              'display:flex;' +
-              'align-items:center;' +
-              'gap:6px;' +
-              'flex-wrap:wrap;' +
-              'margin-top:5px;' +
-              'font-size:10px;' +
-              'font-weight:600;' +
-              'color:#66c0f4;'
-            );
-
-            usageDetail.textContent =
-              usageParts.join(' \u2022 ');
+            usageDetail.className = 'luma-usage-chips';
+            usageParts.forEach(function(part) {
+              var chip = document.createElement('span');
+              chip.className = 'luma-usage-chip';
+              chip.textContent = part;
+              usageDetail.appendChild(chip);
+            });
 
             info.appendChild(usageDetail);
           }
         }
+
         var badge = document.createElement('div');
+        badge.setAttribute('data-lumaforge-source-badge', 'true');
+        badge.setAttribute('class', 'luma-source-badge-wrap');
 
         if (avail) {
           badge.setAttribute(
@@ -1380,7 +1707,7 @@
             'white-space:nowrap;' +
             'flex-shrink:0;' +
             'background:rgba(102,192,255,.14);' +
-            'color:#66c0ff;' +
+            'color:var(--luma-ssh-accent,#66c0ff);' +
             'box-shadow:0 0 8px rgba(102,192,255,.16);'
           );
 
@@ -1398,9 +1725,30 @@
             '<span>Unavailable</span>';
         }
 
+        var tooltip = document.createElement('div');
+        tooltip.className = 'luma-source-tooltip';
+        var tooltipParts = [];
+        tooltipParts.push((src.name || src.id || 'Provider') + ': ' + (src.detail || (avail ? 'Package available' : 'Not available')));
+        if (avail) {
+          var pstat2 = findProviderStat(src.id);
+          if (pstat2 && pstat2.hasKey) {
+            if (pstat2.remainingToday != null && pstat2.dailyLimit != null && pstat2.dailyLimit > 0) {
+              tooltipParts.push('Downloads: ' + pstat2.remainingToday + '/' + pstat2.dailyLimit + ' remaining today');
+            }
+            if (pstat2.apiKeyExpiresAt) {
+              var expText = formatTimeRemaining(pstat2.apiKeyExpiresAt);
+              if (expText) {
+                tooltipParts.push('API key: ' + (expText === 'Expired' ? 'Expired' : expText + ' remaining'));
+              }
+            }
+          }
+        }
+        tooltip.textContent = tooltipParts.join(' \u2022 ');
+
         card.appendChild(icon);
         card.appendChild(info);
         card.appendChild(badge);
+        card.appendChild(tooltip);
 
 
         if (selectable) {
@@ -1413,38 +1761,53 @@
         body.appendChild(card);
       });
 
+      if (unavailableSources && unavailableSources.length) {
+        var blockedHeader = document.createElement('div');
+        blockedHeader.setAttribute('style',
+          'font-size:11px;color:var(--luma-ssh-text-muted,#8f98a0);font-weight:600;text-transform:uppercase;' +
+          'letter-spacing:.5px;margin-top:14px;margin-bottom:6px;padding-left:2px;'
+        );
+        blockedHeader.textContent = 'Unavailable Sources';
+        body.appendChild(blockedHeader);
+
+        unavailableSources.forEach(function (src) {
+          body.appendChild(buildBlockedCard(src));
+        });
+      }
+
       // Output type selection
-      var outputWrap = document.createElement('div');
-      outputWrap.setAttribute('style', 'margin-top:12px;padding:10px 14px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:6px;');
-      var outputLabel = document.createElement('div');
-      outputLabel.setAttribute('style', 'font-size:12px;color:#8f98a0;margin-bottom:6px;font-weight:600;');
-      outputLabel.textContent = 'Output type:';
-      outputWrap.appendChild(outputLabel);
+      // var outputWrap = document.createElement('div');
+      // outputWrap.setAttribute('style', 'margin-top:12px;padding:10px 14px;background:var(--luma-ssh-bg-card,rgba(255,255,255,.03));border:1px solid var(--luma-ssh-border-strong,rgba(255,255,255,.06));border-radius:6px;');
+      // var outputLabel = document.createElement('div');
+      // outputLabel.setAttribute('style', 'font-size:12px;color:var(--luma-ssh-text-muted,#8f98a0);margin-bottom:6px;font-weight:600;');
+      // outputLabel.textContent = 'Output type:';
+      // outputWrap.appendChild(outputLabel);
 
 
-      var outputTypes = [
-        { value: 'lua+manifest', label: 'Lua + Manifest' },
-        { value: 'lua', label: 'Lua only' },
-        { value: 'manifest', label: 'Manifest only' },
-      ];
+      // var outputTypes = [
+      //   { value: 'lua+manifest', label: 'Lua + Manifest' },
+      //   { value: 'lua', label: 'Lua only' },
+      //   { value: 'manifest', label: 'Manifest only' },
+      // ];
 
-      var outputGroup = document.createElement('div');
-      outputGroup.setAttribute('style', 'display:flex;gap:12px;');
-      outputTypes.forEach(function (opt, idx) {
-        var lbl = document.createElement('label');
-        lbl.setAttribute('style', 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#c7d5e0;cursor:pointer;');
-        var radio = document.createElement('input');
-        radio.type = 'radio';
-        radio.name = 'luma-output-type';
-        radio.value = opt.value;
-        if (idx === 0) radio.checked = true;
-        radio.setAttribute('style', 'margin:0;');
-        lbl.appendChild(radio);
-        lbl.appendChild(document.createTextNode(opt.label));
-        outputGroup.appendChild(lbl);
-      });
-      outputWrap.appendChild(outputGroup);
-      body.appendChild(outputWrap);
+      // var outputGroup = document.createElement('div');
+      // outputGroup.setAttribute('style', 'display:flex;gap:12px;');
+      // outputTypes.forEach(function (opt, idx) {
+      //   var lbl = document.createElement('label');
+      //   lbl.setAttribute('style', 'display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--luma-ssh-text,#c7d5e0);cursor:pointer;');
+      //   var radio = document.createElement('input');
+      //   radio.type = 'radio';
+      //   radio.name = 'luma-output-type';
+      //   radio.value = opt.value;
+      //   if (idx === 0) radio.checked = true;
+      //   radio.setAttribute('style', 'margin:0;');
+      //   lbl.appendChild(radio);
+      //   lbl.appendChild(document.createTextNode(opt.label));
+      //   outputGroup.appendChild(lbl);
+      // });
+      // outputWrap.appendChild(outputGroup);
+      // body.appendChild(outputWrap);
+      try { logModalHorizontalOverflow(); } catch (_) { }
     } catch (e) { console.error('[CEF_INJECT_ERROR] renderSources:', e); }
   }
 
@@ -1455,9 +1818,9 @@
     try {
       if (card.getAttribute('data-pending') === 'true') return;
       card.setAttribute('data-pending', 'true');
-      card.setAttribute('style', ST.card + 'opacity:.5;cursor:wait;pointer-events:none;');
+      card.setAttribute('style', 'opacity:.5;cursor:wait;pointer-events:none;');
 
-      var badge = card.querySelector('div:last-child');
+      var badge = getModalBadge(card);
       if (badge) {
         badge.setAttribute('style', ST.badgeAvail);
         badge.innerHTML = dot('blue') + '<span>ADDING\u2026</span>';
@@ -1503,7 +1866,7 @@
         .catch(function (err) {
           console.error('[LUMA_BRIDGE] download — Error:', err.message || err);
           card.setAttribute('data-pending', 'false');
-          card.setAttribute('style', ST.card);
+          card.removeAttribute('style');
           if (badge) {
             badge.setAttribute('style', ST.badgeUnavail);
             badge.innerHTML = dot('red') + '<span>FAILED \u2014 RETRY</span>';
@@ -1522,17 +1885,18 @@
   // ---------------------------------------------------------------------------
   function showDownloadProgress(appId, requestId) {
     try {
-      var body = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] > div > div:nth-child(2)');
+      var body = getModalBody();
       if (!body) return;
 
       body.innerHTML =
         '<div style="' + ST.progressWrap + '">' +
         '<div style="margin-bottom:14px;">' + svgSpinner() + '</div>' +
         '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">Downloading\u2026</div>' +
-        '<div style="' + ST.progressLabel + '">Request ' + (requestId || '').slice(0, 20) + '</div>' +
+        '<div style="' + ST.progressLabel + '"><span style="font-family:monospace;font-size:10px;opacity:.7;" title="' + (requestId || '') + '">' + (requestId || '').slice(0, 16) + '\u2026</span></div>' +
         '<div style="' + ST.progressBar + '"><div id="luma-progress-fill" style="' + ST.progressFill + '"></div></div>' +
         '<div id="luma-progress-status" style="font-size:12px;color:#66c0ff;">Queued</div>' +
         '</div>';
+      try { logModalHorizontalOverflow(); } catch (_) { }
     } catch (_) { }
   }
 
@@ -1627,7 +1991,7 @@
   // ---------------------------------------------------------------------------
   function showDownloadSuccess(appId, requestId) {
     try {
-      var body = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] > div > div:nth-child(2)');
+      var body = getModalBody();
       if (!body) return;
 
       setButtonState(appId, ST.btnSuccess, svgCheck() + '<span>ADDED TO LUMAFORGE</span>', false);
@@ -1638,9 +2002,9 @@
         '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
         '<div style="' + ST.successTitle + '">Package Added Successfully</div>' +
         '<div style="' + ST.successDetail + '">The package has been downloaded and installed to your Steam library.</div>' +
-        '<div style="' + ST.successActions + '">' +
-        '<button id="luma-btn-open-library" style="' + ST.primaryBtn + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
-        '<button id="luma-btn-continue" style="' + ST.secondaryBtn + '">CONTINUE BROWSING</button>' +
+        '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
+        '<button type="button" id="luma-btn-open-library" style="' + ST.primaryBtn + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
+        '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">CONTINUE BROWSING</button>' +
         '</div>' +
         '</div>';
 
@@ -1659,6 +2023,7 @@
           closeModal();
         });
       }
+      try { logModalHorizontalOverflow(); } catch (_) { }
     } catch (_) { }
   }
 
@@ -1667,7 +2032,7 @@
   // ---------------------------------------------------------------------------
   function showDownloadError(appId, message, errorCode) {
     try {
-      var body = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] > div > div:nth-child(2)');
+      var body = getModalBody();
       if (!body) return;
 
       setButtonState(appId, ST.btn, svgDownload() + '<span>TRY AGAIN</span>', false);
@@ -1682,9 +2047,9 @@
         '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
         '<div style="' + ST.errorTitle + '">Download Failed</div>' +
         '<div style="' + ST.errorMsgNew + '">' + detail + '</div>' +
-        '<div style="' + ST.errorActions + '">' +
-        '<button id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>TRY AGAIN</span></button>' +
-        '<button id="luma-btn-close-error" style="' + ST.secondaryBtn + '">CLOSE</button>' +
+        '<div style="' + ST.errorActions + '" class="luma-ssh-error-actions">' +
+        '<button type="button" id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>TRY AGAIN</span></button>' +
+        '<button type="button" id="luma-btn-close-error" style="' + ST.secondaryBtn + '">CLOSE</button>' +
         '</div>' +
         '</div>';
 
@@ -1701,6 +2066,7 @@
           closeModal();
         });
       }
+      try { logModalHorizontalOverflow(); } catch (_) { }
     } catch (_) { }
   }
 
@@ -1964,6 +2330,34 @@
       console.log('[LUMA_RUNTIME] Observer active:', !!state.observer);
       console.log('[LUMA_RUNTIME] History wrapped:', state.historyPatched);
     } catch (e) { console.error('[CEF_INJECT_ERROR] activate:', e); }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Debug overflow diagnostic (disabled by default)
+  // ---------------------------------------------------------------------------
+  var LUMA_DEBUG_OVERFLOW = false;
+  function logModalHorizontalOverflow() {
+    if (!LUMA_DEBUG_OVERFLOW) return;
+    var modal = document.querySelector(
+      '[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"]'
+    );
+    if (!modal) return;
+    var panel = modal.querySelector('.luma-ssh-modal-panel');
+    var body = modal.querySelector('.luma-ssh-modal-body');
+    var footer = modal.querySelector('[style*="border-top"]');
+    var all = modal.querySelectorAll('*');
+    Array.prototype.forEach.call(all, function (el) {
+      if (el.scrollWidth > el.clientWidth + 1) {
+        console.warn(
+          '[LUMA_MODAL_OVERFLOW]',
+          el.tagName,
+          el.className || '',
+          { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth, text: (el.textContent || '').slice(0, 80) }
+        );
+      }
+    });
+    if (panel) console.log('[LUMA_MODAL_OVERFLOW_CHECK] panel:', panel.scrollWidth <= panel.clientWidth + 1, panel.scrollWidth, panel.clientWidth);
+    if (body) console.log('[LUMA_MODAL_OVERFLOW_CHECK] body:', body.scrollWidth <= body.clientWidth + 1, body.scrollWidth, body.clientWidth);
   }
 
   // ---------------------------------------------------------------------------

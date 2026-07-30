@@ -9,6 +9,9 @@
   "summary": "Asset download controls on every Steam Store game page",
   "author": "LumaForge",
   "license": "MIT",
+  "requires_react": false,
+  "target_url": "",
+  "enabled": true,
   "permissions": [
     {
       "id": "network.http",
@@ -37,5 +40,10 @@
     "cefInjection": true,
     "injectScript": "inject.js",
     "targetUrl": "store.steampowered.com"
+  },
+  "backend": {
+    "backendType": "lua",
+    "script": "backend.lua",
+    "port": null
   }
 }
