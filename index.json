@@ -8,39 +8,14 @@
   "updatedAt": "2026-07-20T00:00:00Z",
   "extensions": [
     {
-      "id": "goldberg",
-      "displayName": "Goldberg Emulator",
-      "description": "Open-source Steam emulator for offline and LAN play",
+      "id": "steam-store-helper",
+      "name": "steam-store-helper",
+      "displayName": "Steam Store Package Helper",
+      "description": "Injects asset download controls directly into the official Steam Store action bar via standalone WebSockets.",
       "version": "1.0.0",
-      "categories": ["tools"],
-      "manifestUrl": "extensions/goldberg/manifest.json",
-      "verified": true
-    },
-    {
-      "id": "smokeapi",
-      "displayName": "SmokeAPI",
-      "description": "Steam API wrapper for DLC unlock and offline mode",
-      "version": "1.0.0",
-      "categories": ["tools"],
-      "manifestUrl": "extensions/smokeapi/manifest.json",
-      "verified": true
-    },
-    {
-      "id": "steamless",
-      "displayName": "Steamless",
-      "description": "Universal Steam DRM unpacker",
-      "version": "1.0.0",
-      "categories": ["tools"],
-      "manifestUrl": "extensions/steamless/manifest.json",
-      "verified": true
-    },
-    {
-      "id": "onlinefix",
-      "displayName": "Online-Fix",
-      "description": "Online multiplayer fix via community servers",
-      "version": "1.0.0",
-      "categories": ["tools"],
-      "manifestUrl": "extensions/onlinefix/manifest.json",
+      "author": "LumaForge",
+      "categories": ["steam", "tools"],
+      "manifestUrl": "extensions/steam-store-helper/manifest.json",
       "verified": true
     },
     {
