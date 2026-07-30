@@ -1,8 +1,8 @@
 extension = {
   id = "steam-store-helper",
   name = "Steam Store Package Helper",
-  version = "1.0.0",
-  description = "Injects asset download controls into the Steam Store action bar via CDP WebSocket.",
+  version = "2.6.0",
+  description = "Injects asset download controls into the Steam Store action bar via CDP WebSocket, with a Lua backend for provider integration.",
 
   -- The inject.js payload lives as a sibling file on disk.
   -- The TS bridge reads it and pushes it via inject_to_steam_tab.
