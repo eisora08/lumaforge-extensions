@@ -37,7 +37,7 @@ end
 local function get_config_path()
     local lad = local_appdata()
     if lad and lad ~= "" then
-        return lad .. "\\LumaForge\\config.json"
+        return lad .. "/LumaForge/config.json"
     end
     return ""
 end
@@ -182,7 +182,7 @@ end
 
 local function check_local_status(app_id)
     local steam = steam_path()
-    local lua_path = steam .. "\\config\\lua\\" .. app_id .. ".lua"
+    local lua_path = steam .. "/config/lua/" .. app_id .. ".lua"
     local exists = file_exists(lua_path)
     return {
         ok = true,
@@ -320,8 +320,8 @@ local function start_download(app_id, source_id, output_type)
         dl.progress = 90
 
         local steam = steam_path()
-        local lua_dir = steam .. "\\config\\lua"
-        local lua_path = lua_dir .. "\\" .. tostring(app_id) .. ".lua"
+        local lua_dir = steam .. "/config/lua"
+        local lua_path = lua_dir .. "/" .. tostring(app_id) .. ".lua"
         write_file(lua_path, body)
         dl.progress = 95
         dl.message = "Installed to " .. lua_path
@@ -607,9 +607,9 @@ end
 
 local function get_library_folders()
     local steam = steam_path()
-    local vdf_path = steam .. "\\steamapps\\libraryfolders.vdf"
+    local vdf_path = steam .. "/steamapps/libraryfolders.vdf"
     if not file_exists(vdf_path) then
-        vdf_path = steam .. "\\config\\libraryfolders.vdf"
+        vdf_path = steam .. "/config/libraryfolders.vdf"
     end
     if not file_exists(vdf_path) then
         return {}
@@ -635,7 +635,7 @@ end
 
 local function scan_library_for_games(lib_path)
     local games = {}
-    local steamapps = lib_path .. "\\steamapps"
+    local steamapps = lib_path .. "/steamapps"
     if not dir_exists(steamapps) then
         return games
     end
@@ -644,7 +644,7 @@ local function scan_library_for_games(lib_path)
     for _, name in ipairs(entries) do
         local app_id = name:match("^appmanifest_(%d+)%.acf$")
         if app_id then
-            local acf_path = steamapps .. "\\" .. name
+            local acf_path = steamapps .. "/" .. name
             local raw = read_file(acf_path)
             if raw and raw ~= "" then
                 local ok_acf, parsed = pcall(parse_acf, raw)
@@ -670,7 +670,7 @@ end
 
 local function get_installed_games()
     local steam = steam_path()
-    local lua_dir = steam .. "\\config\\lua"
+    local lua_dir = steam .. "/config/lua"
 
     local lua_games = {}
     if dir_exists(lua_dir) then
@@ -678,7 +678,7 @@ local function get_installed_games()
         for _, name in ipairs(entries) do
             local app_id = name:match("^(%d+)%.lua$")
             if app_id then
-                local lua_path = lua_dir .. "\\" .. name
+                local lua_path = lua_dir .. "/" .. name
                 local mtime = 0
                 local ok, mt = pcall(file_mtime, lua_path)
                 if ok then
@@ -696,7 +696,7 @@ local function get_installed_games()
     local libraries = get_library_folders()
     local installed = {}
 
-    local main_steamapps = steam .. "\\steamapps"
+    local main_steamapps = steam .. "/steamapps"
     if dir_exists(main_steamapps) then
         local main_games = scan_library_for_games(steam)
         for _, g in ipairs(main_games) do
