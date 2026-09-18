@@ -15,6 +15,8 @@
   var BRIDGE_HOST = '127.0.0.1';
   var BRIDGE_PORT = 21775;
   var BRIDGE_SCHEME = 'http';
+
+  try { document.title = 'SSH_INJECTED_' + DOCUMENT_ID; } catch(_) {}
   var NAMESPACE = '__lumaforge_ssh__';
   var BTN_ID = 'luma-action-btn';
   var MODAL_MARKER_ATTR = 'data-lumaforge-modal';
@@ -73,7 +75,14 @@
     reconcileCount: 0,
     documentId: DOCUMENT_ID,
     savedFocusElement: null,
+    depotModalState: null,
   };
+
+  // ---------------------------------------------------------------------------
+  // Platform detection
+  // ---------------------------------------------------------------------------
+  var IS_LINUX = typeof navigator !== 'undefined' &&
+                 navigator.platform.toLowerCase().indexOf('linux') !== -1;
 
   // ---------------------------------------------------------------------------
   // SVG Icons (all inline-styled)
@@ -106,6 +115,15 @@
   }
   function svgLock() {
     return '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="9" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 015 0v2"/></svg>';
+  }
+  function svgBox() {
+    return '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5.5l6-3.5 6 3.5v5l-6 3.5-6-3.5z"/><path d="M2 5.5l6 3.5 6-3.5"/><path d="M8 9v4.5"/></svg>';
+  }
+  function svgCheckSmall() {
+    return '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.5l3.5 3.5 6.5-7"/></svg>';
+  }
+  function svgRefresh() {
+    return '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 8a5.5 5.5 0 019.43-3.9M13.5 8a5.5 5.5 0 01-9.43 3.9"/><path d="M12 1v4h-4M4 15v-4h4"/></svg>';
   }
 
   // ---------------------------------------------------------------------------
@@ -317,6 +335,160 @@
         'background:rgba(102,192,255,.4);' +
         '}' +
 
+        // ── Depot card styles ──
+        '.luma-depot-card{' +
+        'display:grid;' +
+        'grid-template-columns:22px 1fr auto;' +
+        'align-items:center;' +
+        'column-gap:12px;' +
+        'width:100%;' +
+        'padding:10px 14px;' +
+        'margin-bottom:4px;' +
+        'background:rgba(255,255,255,.025);' +
+        'border:1px solid rgba(255,255,255,.06);' +
+        'border-radius:8px;' +
+        'cursor:pointer;' +
+        'transition:background .15s ease,border-color .15s ease,opacity .15s ease;' +
+        '}' +
+        '.luma-depot-card:hover{' +
+        'background:rgba(255,255,255,.05)!important;' +
+        'border-color:rgba(102,192,255,.18)!important;' +
+        '}' +
+        '.luma-depot-card.selected{' +
+        'border-color:rgba(102,192,255,.3)!important;' +
+        'background:rgba(102,192,255,.06)!important;' +
+        '}' +
+        '.luma-depot-card.disabled{' +
+        'opacity:.45!important;' +
+        'cursor:not-allowed!important;' +
+        'pointer-events:auto!important;' +
+        '}' +
+        '.luma-depot-card input[type="checkbox"]{' +
+        'accent-color:#66c0ff;' +
+        'width:16px;' +
+        'height:16px;' +
+        'cursor:pointer;' +
+        'margin:0;' +
+        '}' +
+        '.luma-depot-card.disabled input[type="checkbox"]{' +
+        'cursor:not-allowed;' +
+        '}' +
+
+        // ── Depot group header ──
+        '.luma-depot-group-header{' +
+        'display:flex;' +
+        'align-items:center;' +
+        'justify-content:space-between;' +
+        'padding:8px 4px 4px;' +
+        'font-size:11px;' +
+        'font-weight:700;' +
+        'color:var(--luma-ssh-text-muted,#8f98a0);' +
+        'text-transform:uppercase;' +
+        'letter-spacing:.5px;' +
+        '}' +
+        '.luma-depot-group-toggle{' +
+        'font-size:11px;' +
+        'color:var(--luma-ssh-accent,#66c0ff);' +
+        'cursor:pointer;' +
+        'background:none;' +
+        'border:none;' +
+        'padding:2px 6px;' +
+        'font-weight:600;' +
+        'border-radius:4px;' +
+        'transition:background .12s ease;' +
+        '}' +
+        '.luma-depot-group-toggle:hover{' +
+        'background:rgba(102,192,255,.1);' +
+        '}' +
+
+        // ── Depot size/OS badges ──
+        '.luma-depot-meta{' +
+        'display:flex;' +
+        'align-items:center;' +
+        'gap:6px;' +
+        'flex-shrink:0;' +
+        '}' +
+        '.luma-depot-size{' +
+        'font-size:11px;' +
+        'font-weight:600;' +
+        'color:var(--luma-ssh-text-muted,#8f98a0);' +
+        'white-space:nowrap;' +
+        '}' +
+        '.luma-depot-os{' +
+        'display:inline-flex;' +
+        'align-items:center;' +
+        'padding:2px 6px;' +
+        'border-radius:4px;' +
+        'font-size:10px;' +
+        'font-weight:600;' +
+        'white-space:nowrap;' +
+        'background:rgba(102,192,255,.08);' +
+        'color:var(--luma-ssh-accent,#66c0ff);' +
+        '}' +
+
+        // ── Depot info (name + details) ──
+        '.luma-depot-info{' +
+        'min-width:0;' +
+        'overflow:hidden;' +
+        '}' +
+        '.luma-depot-name{' +
+        'font-size:13px;' +
+        'font-weight:600;' +
+        'color:var(--luma-ssh-text-primary,#fff);' +
+        'white-space:nowrap;' +
+        'overflow:hidden;' +
+        'text-overflow:ellipsis;' +
+        '}' +
+        '.luma-depot-detail{' +
+        'font-size:10px;' +
+        'color:var(--luma-ssh-text-muted,#8f98a0);' +
+        'margin-top:1px;' +
+        'overflow-wrap:anywhere;' +
+        'word-break:break-word;' +
+        '}' +
+
+        // ── Depot total bar ──
+        '.luma-depot-total{' +
+        'display:flex;' +
+        'align-items:center;' +
+        'justify-content:space-between;' +
+        'padding:10px 0 0;' +
+        'font-size:12px;' +
+        'color:var(--luma-ssh-text-muted,#8f98a0);' +
+        'border-top:1px solid rgba(102,192,255,.1);' +
+        'margin-top:8px;' +
+        '}' +
+        '.luma-depot-total strong{' +
+        'color:var(--luma-ssh-text-primary,#fff);' +
+        'font-weight:700;' +
+        '}' +
+
+        // ── Depot progress bar ──
+        '.luma-depot-progress{' +
+        'padding:20px 0;text-align:center;' +
+        '}' +
+        '.luma-depot-progress-label{' +
+        'font-size:13px;' +
+        'color:var(--luma-ssh-text-muted,#8f98a0);' +
+        'margin-bottom:8px;' +
+        '}' +
+        '.luma-depot-progress-bar{' +
+        'width:100%;' +
+        'height:6px;' +
+        'background:rgba(255,255,255,.06);' +
+        'border:1px solid rgba(255,255,255,.04);' +
+        'border-radius:3px;' +
+        'overflow:hidden;' +
+        'margin:12px 0;' +
+        '}' +
+        '.luma-depot-progress-fill{' +
+        'height:100%;' +
+        'background:linear-gradient(to right,rgba(26,159,255,.9),rgba(102,192,255,.9));' +
+        'border-radius:3px;' +
+        'transition:width .3s ease;' +
+        'width:0%;' +
+        '}' +
+
         // ── Responsive media queries ──
         '@media(max-width:520px){' +
         '.luma-ssh-modal-backdrop{padding:10px!important;}' +
@@ -378,6 +550,25 @@
     errorTitle: 'font-size:16px;font-weight:700;color:var(--luma-ssh-text-primary,#fff);margin-bottom:6px;',
     errorMsgNew: 'font-size:12px;color:var(--luma-ssh-error,#e74c3c);margin-bottom:20px;overflow-wrap:anywhere;word-break:break-word;',
     errorActions: 'display:flex;gap:12px;justify-content:center;flex-wrap:wrap;',
+
+    // Depot modal styles
+    btnInstalledClickable: 'display:inline-flex;align-items:center;gap:6px;padding:7px 16px;margin-left:10px;border:1px solid rgba(100,200,130,.3);border-radius:3px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;background:rgba(46,160,67,.15);color:var(--luma-ssh-success,#64c882);vertical-align:middle;position:relative;z-index:1;flex-shrink:0;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease,transform .08s ease;',
+    depotGroupHeader: 'display:flex;align-items:center;justify-content:space-between;padding:8px 4px 4px;font-size:11px;font-weight:700;color:var(--luma-ssh-text-muted,#8f98a0);text-transform:uppercase;letter-spacing:.5px;',
+    depotCard: 'display:grid;grid-template-columns:22px 1fr auto;align-items:center;column-gap:12px;width:100%;padding:10px 14px;margin-bottom:4px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);border-radius:8px;cursor:pointer;transition:background .15s ease,border-color .15s ease,opacity .15s ease;',
+    depotCardSelected: 'border-color:rgba(102,192,255,.3)!important;background:rgba(102,192,255,.06)!important;',
+    depotCardDisabled: 'opacity:.45!important;cursor:not-allowed!important;',
+    depotInfo: 'min-width:0;overflow:hidden;',
+    depotName: 'font-size:13px;font-weight:600;color:var(--luma-ssh-text-primary,#fff);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+    depotDetail: 'font-size:10px;color:var(--luma-ssh-text-muted,#8f98a0);margin-top:1px;overflow-wrap:anywhere;word-break:break-word;',
+    depotMeta: 'display:flex;align-items:center;gap:6px;flex-shrink:0;',
+    depotSize: 'font-size:11px;font-weight:600;color:var(--luma-ssh-text-muted,#8f98a0);white-space:nowrap;',
+    depotOs: 'display:inline-flex;align-items:center;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;white-space:nowrap;background:rgba(102,192,255,.08);color:var(--luma-ssh-accent,#66c0ff);',
+    depotTotal: 'display:flex;align-items:center;justify-content:space-between;padding:10px 0 0;font-size:12px;color:var(--luma-ssh-text-muted,#8f98a0);border-top:1px solid rgba(102,192,255,.1);margin-top:8px;',
+    depotTotalStrong: 'color:var(--luma-ssh-text-primary,#fff);font-weight:700;',
+    depotProgressWrap: 'padding:20px 0;text-align:center;',
+    depotProgressLabel: 'font-size:13px;color:var(--luma-ssh-text-muted,#8f98a0);margin-bottom:8px;',
+    depotProgressBar: 'width:100%;height:6px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.04);border-radius:3px;overflow:hidden;margin:12px 0;',
+    depotProgressFill: 'height:100%;background:linear-gradient(to right,rgba(26,159,255,.9),rgba(102,192,255,.9));border-radius:3px;transition:width .3s ease;width:0%;',
   };
 
   function dot(hue) {
@@ -393,12 +584,61 @@
   // ---------------------------------------------------------------------------
   function extractAppId() {
     try {
+      // Method 1: Try window.location (works in standard browser)
       var m = (window.location.pathname || '').match(APP_URL_RE);
       if (!m) m = (window.location.href || '').match(APP_URL_RE);
-      if (!m) return null;
-      var id = m[1];
-      if (!/^\d+$/.test(id) || id.length > MAX_ID_LENGTH || id === '0') return null;
-      return id;
+      if (m) {
+        var id = m[1];
+        if (/^\d+$/.test(id) && id.length <= MAX_ID_LENGTH && id !== '0') return id;
+      }
+
+      // Method 2: Steam global variables
+      if (typeof g_rgCurrentAppID !== 'undefined' && g_rgCurrentAppID) {
+        return String(g_rgCurrentAppID);
+      }
+      if (typeof g_applicationID !== 'undefined' && g_applicationID) {
+        return String(g_applicationID);
+      }
+      if (typeof g_unAppID !== 'undefined' && g_unAppID) {
+        return String(g_unAppID);
+      }
+
+      // Method 3: DOM — look for links with /app/ pattern
+      var appLinks = document.querySelectorAll('a[href*="/app/"]');
+      for (var i = 0; i < appLinks.length; i++) {
+        var href = appLinks[i].getAttribute('href') || '';
+        var linkMatch = href.match(APP_URL_RE);
+        if (linkMatch) {
+          var linkId = linkMatch[1];
+          if (/^\d+$/.test(linkId) && linkId.length <= MAX_ID_LENGTH && linkId !== '0') return linkId;
+        }
+      }
+
+      // Method 4: DOM — look for subid input
+      var subInput = document.querySelector('input[name="subid"]');
+      if (subInput && subInput.value && /^\d+$/.test(subInput.value)) {
+        return subInput.value;
+      }
+
+      // Method 5: DOM — look for data-appid attributes
+      var appElements = document.querySelectorAll('[data-appid]');
+      if (appElements.length > 0) {
+        var appId = appElements[0].getAttribute('data-appid');
+        if (appId && /^\d+$/.test(appId) && appId !== '0') return appId;
+      }
+
+      // Method 6: Parse canonical link
+      var canonical = document.querySelector('link[rel="canonical"]');
+      if (canonical) {
+        var canonicalHref = canonical.getAttribute('href') || '';
+        var canonicalMatch = canonicalHref.match(APP_URL_RE);
+        if (canonicalMatch) {
+          var cid = canonicalMatch[1];
+          if (/^\d+$/.test(cid) && cid.length <= MAX_ID_LENGTH && cid !== '0') return cid;
+        }
+      }
+
+      return null;
     } catch (_) { return null; }
   }
 
@@ -491,7 +731,7 @@
     return minutes + 'm';
   }
   function bridgeUrl(path) {
-    return '/luma-bridge' + path;
+    return BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + BRIDGE_PORT + path;
   }
 
   function sourcesUrl(appId) {
@@ -516,6 +756,22 @@
 
   function openLibraryUrl(appId) {
     return bridgeUrl('/api/open-library/' + appId);
+  }
+
+  function depotsUrl(appId) {
+    return bridgeUrl('/api/depots/' + appId);
+  }
+
+  function depotDownloadUrl() {
+    return bridgeUrl('/api/depot-download');
+  }
+
+  function depotDownloadStatusUrl(jobId) {
+    return bridgeUrl('/api/depot-download-status/' + jobId);
+  }
+
+  function restartSteamUrl() {
+    return bridgeUrl('/api/restart-steam');
   }
 
   function providerStatsUrl() {
@@ -694,9 +950,21 @@
   }
 
   function applyInLibraryState(appId) {
-    setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>IN LIBRARY</span>', true);
-    setButtonLumaState(appId, 'in-library');
-    console.log('[LUMA_INJECT] App', appId, 'already in Luma library');
+    if (IS_LINUX) {
+      setButtonState(appId, ST.btnInstalledClickable, svgCheck() + '<span>IN LIBRARY</span>', false);
+      setButtonLumaState(appId, 'in-library');
+      console.log('[LUMA_INJECT] App', appId, 'already in Luma library (clickable — Linux)');
+    } else {
+      setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>IN LIBRARY</span>', true);
+      setButtonLumaState(appId, 'in-library');
+      console.log('[LUMA_INJECT] App', appId, 'already in Luma library');
+    }
+  }
+
+  function applyInstalledState(appId) {
+    setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>INSTALLED</span>', true);
+    setButtonLumaState(appId, 'installed');
+    console.log('[LUMA_INJECT] App', appId, 'content installed (blocked)');
   }
 
   // ---------------------------------------------------------------------------
@@ -811,12 +1079,15 @@
       state.bridgeRecoveryCount = 0;
 
       var inLibrary = data.inLibrary === true || data.in_library === true;
-      console.log('[LUMA_INJECT] App', appId, 'inLibrary =', inLibrary);
+      var installed = data.installed === true || data.has_acf === true;
+      console.log('[LUMA_INJECT] App', appId, 'inLibrary =', inLibrary, 'installed =', installed);
 
       if (!state.statusCache) state.statusCache = {};
-      state.statusCache[appId] = { inLibrary: inLibrary, timestamp: Date.now() };
+      state.statusCache[appId] = { inLibrary: inLibrary, installed: installed, timestamp: Date.now() };
 
-      if (inLibrary) {
+      if (installed) {
+        applyInstalledState(appId);
+      } else if (inLibrary) {
         applyInLibraryState(appId);
       } else {
         setButtonState(appId, ST.btn, svgDownload() + '<span>ADD VIA LUMAFORGE</span>', false);
@@ -1022,7 +1293,13 @@
             }
             if (btn.getAttribute('aria-disabled') === 'true') return;
             var btnText = btn.textContent || '';
-            if (btnText.indexOf('IN LIBRARY') !== -1) return;
+            if (btnText.indexOf('IN LIBRARY') !== -1) {
+              if (IS_LINUX) {
+                console.log('[LUMA_INJECT] IN LIBRARY click on Linux → opening depot modal for AppID:', btnAppId);
+                openDepotModal(btnAppId);
+              }
+              return;
+            }
             console.log('[LUMA_INJECT] Delegated click for AppID:', btnAppId);
             openSourceModal(btnAppId);
             return;
@@ -1987,6 +2264,616 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Depot download modal (Linux only)
+  // ---------------------------------------------------------------------------
+  function openDepotModal(appId) {
+    try {
+      closeModal();
+
+      state.savedFocusElement = document.activeElement;
+      state.depotModalState = { appId: appId, depots: [], selected: {}, outputDir: '', downloading: false, jobId: null };
+
+      var backdrop = document.createElement('div');
+      backdrop.setAttribute(MODAL_MARKER_ATTR, MODAL_MARKER_VAL);
+      backdrop.setAttribute('class', 'luma-ssh-modal-backdrop');
+      backdrop.setAttribute('style', ST.backdrop);
+
+      var panel = document.createElement('div');
+      panel.setAttribute('class', 'luma-ssh-modal-panel');
+      panel.setAttribute('style', ST.panel + 'width:min(560px,calc(100vw - 32px));');
+      panel.setAttribute('role', 'dialog');
+      panel.setAttribute('aria-modal', 'true');
+      panel.addEventListener('click', function (e) { e.stopPropagation(); });
+
+      var titleId = 'luma-depot-title-' + appId;
+      var descId = 'luma-depot-desc-' + appId;
+      panel.setAttribute('aria-labelledby', titleId);
+      panel.setAttribute('aria-describedby', descId);
+
+      // Header
+      var header = document.createElement('div');
+      header.setAttribute('style', ST.header);
+      var hdrIcon = document.createElement('span');
+      hdrIcon.setAttribute('style', ST.headerIcon);
+      hdrIcon.innerHTML = svgBox();
+      var hdrTextWrap = document.createElement('div');
+      hdrTextWrap.setAttribute('style', 'min-width:0;flex:1;');
+      var hdrTitle = document.createElement('div');
+      hdrTitle.id = titleId;
+      hdrTitle.setAttribute('style', ST.headerTitle);
+      hdrTitle.textContent = 'Download Content';
+      var hdrSubtitle = document.createElement('div');
+      hdrSubtitle.id = descId;
+      hdrSubtitle.setAttribute('style', ST.headerSubtitle);
+      hdrSubtitle.textContent = 'Select depots to download game content';
+      hdrTextWrap.appendChild(hdrTitle);
+      hdrTextWrap.appendChild(hdrSubtitle);
+
+      var hdrVersion = document.createElement('span');
+      hdrVersion.setAttribute('style', ST.headerVersion);
+      var verParts = (LUMA_INJECT_VERSION || '').split('-');
+      hdrVersion.textContent = 'v' + (verParts[0] || LUMA_INJECT_VERSION);
+
+      var closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('class', 'luma-ssh-close-btn');
+      closeBtn.setAttribute('style', ST.closeBtn);
+      closeBtn.setAttribute('aria-label', 'Close');
+      closeBtn.innerHTML = svgX();
+      closeBtn.addEventListener('click', function () {
+        if (state.depotModalState && state.depotModalState.downloading) return;
+        state.depotModalState = null;
+        closeModal();
+      });
+
+      var headerRight = document.createElement('div');
+      headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;');
+      headerRight.appendChild(hdrVersion);
+      headerRight.appendChild(closeBtn);
+
+      header.appendChild(hdrIcon);
+      header.appendChild(hdrTextWrap);
+      header.appendChild(headerRight);
+
+      // Body (loading state)
+      var body = document.createElement('div');
+      body.setAttribute('class', 'luma-ssh-modal-body');
+      body.setAttribute('data-lumaforge-modal-body', 'true');
+      body.setAttribute('style', ST.body);
+      body.innerHTML =
+        '<div style="' + ST.loading + '">' +
+        svgSpinner() +
+        '<span style="' + ST.loadingText + '">Resolving depots\u2026</span>' +
+        '</div>';
+
+      // Footer
+      var footer = document.createElement('div');
+      footer.setAttribute('style', ST.footer);
+      var footerNote = document.createElement('span');
+      footerNote.setAttribute('style', ST.footerNote);
+      footerNote.textContent = 'Content is downloaded through DepotDownloaderMod';
+      var cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.setAttribute('style', ST.cancelBtn);
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', function () {
+        if (state.depotModalState && state.depotModalState.downloading) return;
+        state.depotModalState = null;
+        closeModal();
+      });
+      footer.appendChild(footerNote);
+      footer.appendChild(cancelBtn);
+
+      panel.appendChild(header);
+      panel.appendChild(body);
+      panel.appendChild(footer);
+      backdrop.appendChild(panel);
+
+      (document.body || document.documentElement).appendChild(backdrop);
+      try { closeBtn.focus(); } catch (_) { }
+      try { logModalHorizontalOverflow(); } catch (_) { }
+
+      // Fetch depots
+      fetchDepotsForModal(appId);
+    } catch (_) { }
+  }
+
+  function fetchDepotsForModal(appId) {
+    fetch(depotsUrl(appId), { method: 'GET', mode: 'cors', cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.message || 'HTTP ' + r.status); });
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error((d && d.message) || 'Failed to resolve depots');
+        if (!state.depotModalState || state.depotModalState.appId !== appId) return;
+
+        state.depotModalState.depots = d.depots || [];
+        state.depotModalState.gameName = d.gameName || 'Unknown';
+        state.depotModalState.outputDir = d.outputDir || '';
+
+        // Pre-select depots with manifests (base game)
+        var selected = {};
+        (d.depots || []).forEach(function (depot) {
+          if (depot.manifestId && depot.manifestId.length > 0 && depot.hasKey !== false) {
+            selected[depot.depotId] = true;
+          }
+        });
+        state.depotModalState.selected = selected;
+
+        renderDepotList(appId);
+      })
+      .catch(function (err) {
+        if (!state.depotModalState || state.depotModalState.appId !== appId) return;
+        var body = getModalBody();
+        if (!body) return;
+
+        var isNotInstalled = err.message && err.message.indexOf('not installed') !== -1;
+        var isNoKeys = err.message && err.message.indexOf('No depot keys') !== -1;
+
+        body.innerHTML =
+          '<div style="' + ST.errorWrap + '">' +
+          '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
+          '<div style="' + ST.errorTitle + '">' + (isNotInstalled ? 'DepotDownloaderMod Not Installed' : isNoKeys ? 'No Depot Keys Found' : 'Failed to Resolve Depots') + '</div>' +
+          '<div style="' + ST.errorMsgNew + '">' + (err.message || 'Unknown error') + '</div>' +
+          '<div style="' + ST.errorActions + '">' +
+          '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
+          '</div>' +
+          '</div>';
+
+        var retryBtn = document.getElementById('luma-depot-retry');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', function () {
+            fetchDepotsForModal(appId);
+          });
+        }
+      });
+  }
+
+  function renderDepotList(appId) {
+    var body = getModalBody();
+    if (!body) return;
+    var ms = state.depotModalState;
+    if (!ms) return;
+
+    var depots = ms.depots;
+    var selected = ms.selected;
+
+    // Group depots
+    var baseDepots = [];
+    var dlcDepots = [];
+    var sharedDepots = [];
+    depots.forEach(function (d) {
+      if (d.isShared) sharedDepots.push(d);
+      else if (d.dlcAppId) dlcDepots.push(d);
+      else baseDepots.push(d);
+    });
+
+    var totalSelected = 0;
+    var totalSize = 0;
+    Object.keys(selected).forEach(function (id) {
+      if (selected[id]) {
+        totalSelected++;
+        var depot = depots.find(function (d) { return d.depotId === parseInt(id); });
+        if (depot) totalSize += depot.size || 0;
+      }
+    });
+
+    var html = '';
+
+    function renderGroup(title, groupDepots, groupKey) {
+      if (groupDepots.length === 0) return '';
+      var groupSelected = groupDepots.filter(function (d) { return selected[d.depotId]; }).length;
+      var groupSize = groupDepots.reduce(function (sum, d) { return sum + (selected[d.depotId] ? (d.size || 0) : 0); }, 0);
+
+      var s = '<div class="luma-depot-group">';
+      s += '<div style="' + ST.depotGroupHeader + '">';
+      s += '<span>' + title + ' (' + groupSelected + '/' + groupDepots.length + ')' + '</span>';
+      s += '<button type="button" class="luma-depot-group-toggle" data-group="' + groupKey + '">Select All</button>';
+      s += '</div>';
+
+      groupDepots.forEach(function (depot) {
+        var hasManifest = depot.manifestId && depot.manifestId.length > 0;
+        var hasKey = depot.key && depot.key.length > 0;
+        var canDownload = hasManifest && hasKey;
+        var isSelected = !!selected[depot.depotId];
+        var cardClass = 'luma-depot-card';
+        if (!canDownload) cardClass += ' disabled';
+        if (isSelected && canDownload) cardClass += ' selected';
+
+        var sizeStr = formatBytes(depot.size || 0);
+        var osStr = depot.os ? formatOs(depot.os) : '';
+        var langStr = depot.language || '';
+
+        s += '<div class="' + cardClass + '" data-depot-id="' + depot.depotId + '">';
+        s += '<input type="checkbox"' + (isSelected ? ' checked' : '') + (canDownload ? '' : ' disabled') + '>';
+        s += '<div style="' + ST.depotInfo + '">';
+        s += '<div style="' + ST.depotName + '">' + escapeHtml(depot.name || 'Depot ' + depot.depotId) + '</div>';
+        var detailParts = [];
+        if (depot.dlcAppId) detailParts.push('DLC ' + depot.dlcAppId);
+        if (!hasManifest) detailParts.push('No manifest');
+        if (!hasKey) detailParts.push('No key');
+        if (detailParts.length > 0) {
+          s += '<div style="' + ST.depotDetail + '">' + escapeHtml(detailParts.join(' \u00b7 ')) + '</div>';
+        }
+        s += '</div>';
+        s += '<div style="' + ST.depotMeta + '">';
+        s += '<span style="' + ST.depotSize + '">' + sizeStr + '</span>';
+        if (osStr) s += '<span style="' + ST.depotOs + '">' + osStr + '</span>';
+        s += '</div>';
+        s += '</div>';
+      });
+      s += '</div>';
+      return s;
+    }
+
+    html += renderGroup('Base Game', baseDepots, 'base');
+    html += renderGroup('DLC', dlcDepots, 'dlc');
+    html += renderGroup('Shared', sharedDepots, 'shared');
+
+    // Total bar
+    html += '<div style="' + ST.depotTotal + '">';
+    html += '<span><strong>' + totalSelected + '</strong> depot' + (totalSelected !== 1 ? 's' : '') + ' selected \u00b7 <strong>' + formatBytes(totalSize) + '</strong></span>';
+    html += '<button type="button" id="luma-depot-start" style="' + ST.primaryBtn + (totalSelected === 0 ? 'opacity:.5;pointer-events:none;' : '') + '">' + svgDownload() + '<span>START DOWNLOAD</span></button>';
+    html += '</div>';
+
+    body.innerHTML = html;
+
+    // Event listeners for depot cards
+    body.querySelectorAll('.luma-depot-card:not(.disabled)').forEach(function (card) {
+      card.addEventListener('click', function (e) {
+        if (e.target.tagName === 'INPUT') return;
+        var checkbox = card.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          var depotId = parseInt(card.getAttribute('data-depot-id'));
+          selected[depotId] = checkbox.checked;
+          renderDepotList(appId);
+        }
+      });
+    });
+
+    // Checkbox change events
+    body.querySelectorAll('.luma-depot-card:not(.disabled) input[type="checkbox"]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var card = cb.closest('.luma-depot-card');
+        if (card) {
+          var depotId = parseInt(card.getAttribute('data-depot-id'));
+          selected[depotId] = cb.checked;
+          renderDepotList(appId);
+        }
+      });
+    });
+
+    // Select All toggles
+    body.querySelectorAll('.luma-depot-group-toggle').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var groupKey = btn.getAttribute('data-group');
+        var groupDepots = groupKey === 'base' ? baseDepots : groupKey === 'dlc' ? dlcDepots : sharedDepots;
+        var allSelected = groupDepots.every(function (d) { return selected[d.depotId] && d.manifestId && d.key; });
+        groupDepots.forEach(function (d) {
+          if (d.manifestId && d.key) {
+            selected[d.depotId] = !allSelected;
+          }
+        });
+        renderDepotList(appId);
+      });
+    });
+
+    // Start download button
+    var startBtn = document.getElementById('luma-depot-start');
+    if (startBtn) {
+      startBtn.addEventListener('click', function () {
+        startDepotDownload(appId);
+      });
+    }
+  }
+
+  function startDepotDownload(appId) {
+    var ms = state.depotModalState;
+    if (!ms || ms.downloading) return;
+
+    var selectedDepots = ms.depots.filter(function (d) { return ms.selected[d.depotId]; });
+    if (selectedDepots.length === 0) return;
+
+    ms.downloading = true;
+
+    var payload = JSON.stringify({
+      appId: String(appId),
+      gameName: ms.gameName || 'Unknown',
+      outputDir: ms.outputDir || '',
+      depots: selectedDepots.map(function (d) {
+        return {
+          depotId: d.depotId,
+          manifestId: d.manifestId || '',
+          manifestPath: d.manifestPath || null,
+          size: d.size || 0,
+        };
+      }),
+    });
+
+    fetch(depotDownloadUrl(), {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    })
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (d) { throw new Error(d.message || 'HTTP ' + r.status); });
+        return r.json();
+      })
+      .then(function (d) {
+        if (!d || !d.ok) throw new Error((d && d.message) || 'Failed to start download');
+        ms.jobId = d.jobId;
+        showDepotProgress(appId, d.jobId);
+        startDepotDownloadPoll(d.jobId, appId);
+      })
+      .catch(function (err) {
+        ms.downloading = false;
+        var body = getModalBody();
+        if (!body) return;
+        body.innerHTML =
+          '<div style="' + ST.errorWrap + '">' +
+          '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
+          '<div style="' + ST.errorTitle + '">Download Failed to Start</div>' +
+          '<div style="' + ST.errorMsgNew + '">' + (err.message || 'Unknown error') + '</div>' +
+          '<div style="' + ST.errorActions + '">' +
+          '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
+          '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">CLOSE</button>' +
+          '</div>' +
+          '</div>';
+
+        var retryBtn = document.getElementById('luma-depot-retry');
+        if (retryBtn) {
+          retryBtn.addEventListener('click', function () {
+            ms.downloading = false;
+            startDepotDownload(appId);
+          });
+        }
+        var closeBtnEl = document.getElementById('luma-depot-close');
+        if (closeBtnEl) {
+          closeBtnEl.addEventListener('click', function () {
+            state.depotModalState = null;
+            closeModal();
+          });
+        }
+      });
+  }
+
+  var restartSteamBtnEl = null;
+
+  function restartSteam(appId) {
+    fetch(restartSteamUrl(), { method: 'POST', mode: 'cors', cache: 'no-store' })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+      .then(function (res) {
+        if (res.ok && res.data && res.data.ok) {
+          console.log('[LUMA_INJECT] Steam restarted successfully');
+          if (restartSteamBtnEl) {
+            restartSteamBtnEl.innerHTML = svgCheck() + '<span>RESTARTED</span>';
+            restartSteamBtnEl.disabled = true;
+          }
+        } else {
+          console.error('[LUMA_INJECT] Steam restart failed:', res.data && res.data.message);
+          if (restartSteamBtnEl) {
+            restartSteamBtnEl.innerHTML = svgRefresh() + '<span>RESTART STEAM</span>';
+            restartSteamBtnEl.disabled = false;
+          }
+        }
+      })
+      .catch(function (err) {
+        console.error('[LUMA_INJECT] Steam restart error:', err);
+        if (restartSteamBtnEl) {
+          restartSteamBtnEl.innerHTML = svgRefresh() + '<span>RESTART STEAM</span>';
+          restartSteamBtnEl.disabled = false;
+        }
+      });
+  }
+
+  function showDepotProgress(appId, jobId) {
+    var body = getModalBody();
+    if (!body) return;
+
+    body.innerHTML =
+      '<div style="' + ST.depotProgressWrap + '">' +
+      '<div style="margin-bottom:14px;">' + svgSpinner() + '</div>' +
+      '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">Downloading Content\u2026</div>' +
+      '<div id="luma-depot-progress-msg" style="' + ST.depotProgressLabel + '">Starting download...</div>' +
+      '<div style="' + ST.depotProgressBar + '"><div id="luma-depot-progress-fill" style="' + ST.depotProgressFill + '"></div></div>' +
+      '<div id="luma-depot-progress-detail" style="font-size:11px;color:#66c0ff;"></div>' +
+      '</div>';
+  }
+
+  var _depotPollSeq = 0;
+  function startDepotDownloadPoll(jobId, appId) {
+    _depotPollSeq++;
+    var seq = _depotPollSeq;
+
+    function poll() {
+      if (seq !== _depotPollSeq) return;
+      var ms = state.depotModalState;
+      if (!ms || ms.jobId !== jobId) return;
+
+      fetch(depotDownloadStatusUrl(jobId), { method: 'GET', mode: 'cors', cache: 'no-store' })
+        .then(function (r) {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(function (d) {
+          if (seq !== _depotPollSeq) return;
+          if (!d || !d.ok) throw new Error((d && d.message) || 'Invalid response');
+
+          updateDepotProgressUI(d);
+
+          if (d.status === 'completed') {
+            showDepotDownloadSuccess(appId);
+            return;
+          }
+          if (d.status === 'failed') {
+            showDepotDownloadError(d.error || 'Download failed');
+            return;
+          }
+          // Continue polling for 'integrating' status (post-download Steam integration)
+          if (d.status === 'integrating') {
+            setTimeout(poll, 1500);
+            return;
+          }
+
+          setTimeout(poll, 1000);
+        })
+        .catch(function () {
+          if (seq !== _depotPollSeq) return;
+          setTimeout(poll, 2000);
+        });
+    }
+
+    setTimeout(poll, 1000);
+  }
+
+  function updateDepotProgressUI(d) {
+    try {
+      var fill = document.getElementById('luma-depot-progress-fill');
+      var msg = document.getElementById('luma-depot-progress-msg');
+      var detail = document.getElementById('luma-depot-progress-detail');
+
+      if (fill) {
+        fill.style.width = (d.progress || 0) + '%';
+      }
+      if (msg) {
+        if (d.status === 'integrating') {
+          msg.textContent = 'Integrating with Steam\u2026';
+          if (fill) fill.style.width = '100%';
+        } else {
+          var phase = d.phase || 'downloading';
+          var phaseLabel = phase === 'validating' ? 'Validating' : phase === 'extracting' ? 'Extracting' : 'Downloading';
+          msg.textContent = phaseLabel + ' \u2014 ' + (d.progress || 0).toFixed(1) + '%';
+        }
+      }
+      if (detail) {
+        var parts = [];
+        if (d.status === 'integrating') {
+          parts.push('Registering game in Steam library');
+        } else {
+          if (d.bytesRead && d.totalBytes) {
+            parts.push(formatBytes(d.bytesRead) + ' / ' + formatBytes(d.totalBytes));
+          }
+          if (d.speedBytesPerSec) {
+            parts.push(formatBytes(d.speedBytesPerSec) + '/s');
+          }
+        }
+        if (d.message) {
+          parts.push(d.message);
+        }
+        detail.textContent = parts.join(' \u00b7 ');
+      }
+    } catch (_) { }
+  }
+
+  function showDepotDownloadSuccess(appId) {
+    state.depotModalState = null;
+    var body = getModalBody();
+    if (!body) return;
+
+    var restartBtn = IS_LINUX
+      ? '<button type="button" id="luma-depot-restart-steam" style="' + ST.primaryBtn + '">' + svgRefresh() + '<span>RESTART STEAM</span></button>'
+      : '';
+
+    body.innerHTML =
+      '<div style="' + ST.successWrap + '">' +
+      '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
+      '<div style="' + ST.successTitle + '">Content Downloaded</div>' +
+      '<div style="' + ST.successDetail + '">Game content has been downloaded and registered in Steam.</div>' +
+      '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
+      restartBtn +
+      '<button type="button" id="luma-depot-open-library" style="' + (IS_LINUX ? ST.secondaryBtn : ST.primaryBtn) + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
+      '<button type="button" id="luma-depot-close" style="' + ST.secondaryBtn + '">CLOSE</button>' +
+      '</div>' +
+      '</div>';
+
+    var restartBtnEl = document.getElementById('luma-depot-restart-steam');
+    if (restartBtnEl) {
+      restartBtnEl.addEventListener('click', function () {
+        restartSteamBtnEl = restartBtnEl;
+        restartBtnEl.disabled = true;
+        restartBtnEl.innerHTML = svgSpinner() + '<span>RESTARTING...</span>';
+        restartSteam(appId);
+      });
+    }
+    var openLibBtn = document.getElementById('luma-depot-open-library');
+    if (openLibBtn) {
+      openLibBtn.addEventListener('click', function () {
+        fetch(openLibraryUrl(appId), { method: 'POST', mode: 'cors', cache: 'no-store' }).catch(function () { });
+        closeModal();
+      });
+    }
+    var closeBtnEl = document.getElementById('luma-depot-close');
+    if (closeBtnEl) {
+      closeBtnEl.addEventListener('click', function () {
+        closeModal();
+      });
+    }
+  }
+
+  function showDepotDownloadError(message) {
+    if (state.depotModalState) state.depotModalState.downloading = false;
+    var body = getModalBody();
+    if (!body) return;
+
+    body.innerHTML =
+      '<div style="' + ST.errorWrap + '">' +
+      '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
+      '<div style="' + ST.errorTitle + '">Download Failed</div>' +
+      '<div style="' + ST.errorMsgNew + '">' + escapeHtml(message) + '</div>' +
+      '<div style="' + ST.errorActions + '">' +
+      '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
+      '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">CLOSE</button>' +
+      '</div>' +
+      '</div>';
+
+    var retryBtn = document.getElementById('luma-depot-retry');
+    if (retryBtn) {
+      retryBtn.addEventListener('click', function () {
+        if (state.depotModalState) {
+          state.depotModalState.downloading = false;
+          renderDepotList(state.depotModalState.appId);
+        }
+      });
+    }
+    var closeBtnEl = document.getElementById('luma-depot-close');
+    if (closeBtnEl) {
+      closeBtnEl.addEventListener('click', function () {
+        state.depotModalState = null;
+        closeModal();
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Utility: format bytes
+  // ---------------------------------------------------------------------------
+  function formatBytes(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    var units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var i = Math.floor(Math.log(bytes) / Math.log(1024));
+    i = Math.min(i, units.length - 1);
+    return (bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+  }
+
+  function formatOs(os) {
+    if (!os) return '';
+    var lower = os.toLowerCase();
+    if (lower.indexOf('linux') !== -1) return '\uD83D\uDC27 Linux';
+    if (lower.indexOf('windows') !== -1) return '\uD83D\uDDE1\uFE0F Windows';
+    if (lower.indexOf('mac') !== -1 || lower.indexOf('osx') !== -1) return '\uD83C\uDF4E macOS';
+    return os;
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // ---------------------------------------------------------------------------
   // Download success: show success state in modal
   // ---------------------------------------------------------------------------
   function showDownloadSuccess(appId, requestId) {
@@ -1997,16 +2884,30 @@
       setButtonState(appId, ST.btnSuccess, svgCheck() + '<span>ADDED TO LUMAFORGE</span>', false);
       setButtonLumaState(appId, 'added');
 
+      var depotBtn = IS_LINUX
+        ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>DOWNLOAD CONTENT</span></button>'
+        : '';
+      var libraryBtnStyle = IS_LINUX ? ST.secondaryBtn : ST.primaryBtn;
+
       body.innerHTML =
         '<div style="' + ST.successWrap + '">' +
         '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
         '<div style="' + ST.successTitle + '">Package Added Successfully</div>' +
         '<div style="' + ST.successDetail + '">The package has been downloaded and installed to your Steam library.</div>' +
         '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
-        '<button type="button" id="luma-btn-open-library" style="' + ST.primaryBtn + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
+        depotBtn +
+        '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
         '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">CONTINUE BROWSING</button>' +
         '</div>' +
         '</div>';
+
+      var depotDlBtn = document.getElementById('luma-btn-depot-download');
+      if (depotDlBtn) {
+        depotDlBtn.addEventListener('click', function () {
+          closeModal();
+          openDepotModal(appId);
+        });
+      }
 
       var openLibBtn = document.getElementById('luma-btn-open-library');
       if (openLibBtn) {
