@@ -65,7 +65,6 @@ export function openDepotModal(appId: string): void {
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.innerHTML = svgX();
     closeBtn.addEventListener('click', function () {
-      if (state.depotModalState && state.depotModalState.downloading) return;
       state.depotModalState = null;
       closeModal();
     });
@@ -101,7 +100,6 @@ export function openDepotModal(appId: string): void {
     cancelBtn.setAttribute('style', ST.cancelBtn);
     cancelBtn.textContent = 'Cancel';
     cancelBtn.addEventListener('click', function () {
-      if (state.depotModalState && state.depotModalState.downloading) return;
       state.depotModalState = null;
       closeModal();
     });

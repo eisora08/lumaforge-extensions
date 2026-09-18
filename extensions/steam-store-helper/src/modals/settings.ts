@@ -13,7 +13,6 @@ var _settingsBtnHasDownloads = false;
 export function ensureSettingsButton(): void {
   try {
     if (document.getElementById(SETTINGS_BTN_ID)) return;
-    if (!window.location.pathname.match(/\/app\/\d+/)) return;
 
     var btn = document.createElement('button');
     btn.type = 'button';

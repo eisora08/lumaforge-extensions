@@ -3,6 +3,7 @@ import { extractAppId } from '../ui/helpers';
 import { abortPendingRequests, cancelAllRetries, removeButton, getObserverRoot, syncNamespaceState, ensureLumaButtonExists, scheduleBridgeRecovery } from '../ui/button';
 import { closeModal } from '../modals/source';
 import { stopDownloadPoll } from '../modals/source';
+import { ensureSettingsButton } from '../modals/settings';
 
 // ---------------------------------------------------------------------------
 // Reconcile: detect URL/AppID changes and update controls
@@ -13,6 +14,9 @@ export function reconcile(): void {
   var appId = extractAppId();
   var prevUrl = state.currentUrl;
   var prevAppId = state.currentAppId;
+
+  // Ensure floating settings button exists on every page
+  ensureSettingsButton();
 
   console.log('[LUMA_WATCHER] Reconcile start');
   console.log('[LUMA_WATCHER] Current URL:', url);
