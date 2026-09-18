@@ -15,6 +15,7 @@
   var BRIDGE_HOST = '127.0.0.1';
   var BRIDGE_PORT = 21775;
   var BRIDGE_SCHEME = 'http';
+  var BRIDGE_PORT_DETECTED = false;
 
   try { document.title = 'SSH_INJECTED_' + DOCUMENT_ID; } catch(_) {}
   var NAMESPACE = '__lumaforge_ssh__';
@@ -732,6 +733,26 @@
   }
   function bridgeUrl(path) {
     return BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + BRIDGE_PORT + path;
+  }
+
+  function detectBridgePort() {
+    if (BRIDGE_PORT_DETECTED) return Promise.resolve();
+    var ports = [21775, 21777];
+    var tryPort = function (i) {
+      if (i >= ports.length) return Promise.resolve();
+      var url = BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + ports[i] + '/health';
+      return fetch(url, { method: 'GET', mode: 'cors', cache: 'no-store', signal: AbortSignal.timeout(2000) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.status === 'ok') {
+            BRIDGE_PORT = ports[i];
+            BRIDGE_PORT_DETECTED = true;
+            console.log('[LUMA_INJECT] Detected Tauri bridge on port', BRIDGE_PORT);
+          }
+        })
+        .catch(function () { return tryPort(i + 1); });
+    };
+    return tryPort(0);
   }
 
   function sourcesUrl(appId) {
@@ -3218,7 +3239,9 @@
       patchHistory();
       setupEventDelegation();
       startObserver();
-      ensureLumaButtonExists();
+      detectBridgePort().then(function () {
+        ensureLumaButtonExists();
+      });
       syncNamespaceState();
       console.log('[LUMA_RUNTIME] Version:', LUMA_INJECT_VERSION);
       console.log('[LUMA_RUNTIME] Target URL:', window.location.href);
