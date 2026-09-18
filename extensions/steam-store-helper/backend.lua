@@ -37,7 +37,7 @@ end
 local function get_config_path()
     local lad = local_appdata()
     if lad and lad ~= "" then
-        return lad .. "/LumaForge/config.json"
+        return lad .. "/config.json"
     end
     return ""
 end
@@ -383,6 +383,216 @@ local function path_after_prefix(path, prefix)
 end
 
 routes = {}
+
+-- ---------------------------------------------------------------------------
+-- Settings API — manage provider configuration (API keys, base URLs, etc.)
+-- ---------------------------------------------------------------------------
+
+local function mask_api_key(key)
+    if not key or key == "" then
+        return ""
+    end
+    if #key <= 8 then
+        return string.rep("*", #key)
+    end
+    return string.rep("*", #key - 4) .. key:sub(-4)
+end
+
+local function read_config_file()
+    local config_path = get_config_path()
+    if config_path == "" or not file_exists(config_path) then
+        return nil
+    end
+    local raw = read_file(config_path)
+    if not raw or raw == "" then
+        return nil
+    end
+    local ok, config = pcall(json_decode, raw)
+    if not ok or not config then
+        return nil
+    end
+    return config
+end
+
+local function write_config_file(config)
+    local config_path = get_config_path()
+    if config_path == "" then
+        return false
+    end
+    local encoded = json_encode(config)
+    return write_file(config_path, encoded)
+end
+
+routes["GET /api/settings"] = function(req)
+    local config = read_config_file()
+    if not config then
+        return {
+            status = 200,
+            body = json_encode({
+                ok = true,
+                providers = {},
+                message = "No config found"
+            }),
+            contentType = "application/json"
+        }
+    end
+
+    local dl = config.downloads or {}
+    local raw_providers = dl.providers or {}
+    local providers = {}
+
+    for _, p in ipairs(raw_providers) do
+        table.insert(providers, {
+            id = p.id or "unknown",
+            name = p.name or p.id or "Unknown",
+            enabled = p.enabled ~= false,
+            baseUrl = p.baseUrl or p.base_url or "",
+            hasKey = p.apiKey ~= nil and p.apiKey ~= "",
+            maskedKey = mask_api_key(p.apiKey)
+        })
+    end
+
+    return {
+        status = 200,
+        body = json_encode({
+            ok = true,
+            providers = providers
+        }),
+        contentType = "application/json"
+    }
+end
+
+routes["POST /api/settings"] = function(req)
+    local body = req.json or {}
+    local incoming_providers = body.providers
+    if not incoming_providers then
+        return {
+            status = 400,
+            body = json_encode({
+                ok = false,
+                message = "Missing providers array"
+            }),
+            contentType = "application/json"
+        }
+    end
+
+    local config = read_config_file()
+    if not config then
+        config = { downloads = {} }
+    end
+    if not config.downloads then
+        config.downloads = {}
+    end
+
+    local existing_providers = config.downloads.providers or {}
+    local existing_by_id = {}
+    for _, ep in ipairs(existing_providers) do
+        existing_by_id[ep.id] = ep
+    end
+
+    local new_providers = {}
+    for _, np in ipairs(incoming_providers) do
+        local id = np.id
+        if id then
+            local existing = existing_by_id[id] or {}
+            local entry = {
+                id = id,
+                name = np.name or existing.name or id,
+                enabled = np.enabled ~= false,
+                baseUrl = np.baseUrl or existing.baseUrl or "",
+                apiKey = np.apiKey
+            }
+            -- If apiKey is nil or empty, preserve existing key
+            if (not entry.apiKey or entry.apiKey == "") and existing.apiKey then
+                entry.apiKey = existing.apiKey
+            end
+            table.insert(new_providers, entry)
+        end
+    end
+
+    config.downloads.providers = new_providers
+    local ok = write_config_file(config)
+
+    if ok then
+        providers_cache = nil
+        log("[steam-store-helper] Settings saved, providers cache cleared")
+    end
+
+    return {
+        status = 200,
+        body = json_encode({
+            ok = ok,
+            message = ok and "Settings saved" or "Failed to save settings"
+        }),
+        contentType = "application/json"
+    }
+end
+
+routes["POST /api/settings/test-key"] = function(req)
+    local body = req.json or {}
+    local provider_id = body.providerId
+    local base_url = body.baseUrl
+    local api_key = body.apiKey
+
+    if not base_url or base_url == "" then
+        return {
+            status = 400,
+            body = json_encode({
+                ok = false,
+                message = "Missing baseUrl"
+            }),
+            contentType = "application/json"
+        }
+    end
+
+    -- Build test URL based on provider
+    local test_url = nil
+    local headers = {}
+
+    if provider_id == "hubcapdb" then
+        test_url = base_url .. "/api/v1/status/730"
+        if api_key and api_key ~= "" then
+            headers["Authorization"] = "Bearer " .. api_key
+        end
+    elseif provider_id == "ryuu" then
+        test_url = base_url .. "/api/download/730"
+        if api_key and api_key ~= "" then
+            headers["X-Auth-Key"] = api_key
+        end
+    else
+        test_url = base_url .. "/api/v1/status/730"
+        if api_key and api_key ~= "" then
+            headers["Authorization"] = "Bearer " .. api_key
+        end
+    end
+
+    local resp = http_get_headers(test_url, headers, 15)
+    local status = resp.status or 0
+
+    if status >= 200 and status < 500 then
+        return {
+            status = 200,
+            body = json_encode({
+                ok = true,
+                message = "API key is valid (HTTP " .. tostring(status) .. ")"
+            }),
+            contentType = "application/json"
+        }
+    else
+        return {
+            status = 200,
+            body = json_encode({
+                ok = false,
+                message = "API key test failed (HTTP " .. tostring(status) .. ")"
+            }),
+            contentType = "application/json"
+        }
+    end
+end
+
+-- ---------------------------------------------------------------------------
+-- Existing routes
+-- ---------------------------------------------------------------------------
 
 routes["GET /api/local-status/:id"] = function(req)
     local app_id = path_after_prefix(req.path, "/api/local-status/")
