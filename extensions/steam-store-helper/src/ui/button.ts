@@ -106,6 +106,12 @@ export function applyInstalledState(appId: string): void {
   console.log('[LUMA_INJECT] App', appId, 'content installed (blocked)');
 }
 
+export function applyInstallingState(appId: string): void {
+  setButtonState(appId, ST.btnInstalled, svgSpinner() + '<span>INSTALLING</span>', true);
+  setButtonLumaState(appId, 'installing');
+  console.log('[LUMA_INJECT] App', appId, 'content installing');
+}
+
 // ---------------------------------------------------------------------------
 // Bridge recovery timer
 // ---------------------------------------------------------------------------
@@ -224,7 +230,10 @@ export function handleLocalStatusResult(appId: string, err: any, data: any): voi
     if (!state.statusCache) state.statusCache = {};
     state.statusCache[appId] = { inLibrary: inLibrary, installed: installed, timestamp: Date.now() };
 
-    if (installed) {
+    // Check if this app is currently being downloaded
+    if (state.installingAppIds[appId]) {
+      applyInstallingState(appId);
+    } else if (installed) {
       applyInstalledState(appId);
     } else if (inLibrary) {
       applyInLibraryState(appId);

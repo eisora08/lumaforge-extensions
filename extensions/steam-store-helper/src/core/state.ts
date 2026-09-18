@@ -100,6 +100,7 @@ interface State {
   reconcileCount: number;
   documentId: string;
   savedFocusElement: Element | null;
+  installingAppIds: Record<string, boolean>;
   depotModalState: {
     appId: string;
     depots: any[];
@@ -142,6 +143,7 @@ var state: State = {
   reconcileCount: 0,
   documentId: DOCUMENT_ID,
   savedFocusElement: null,
+  installingAppIds: {},
   depotModalState: null,
 };
 

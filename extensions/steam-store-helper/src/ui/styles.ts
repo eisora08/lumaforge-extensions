@@ -38,6 +38,8 @@ export function ensureKeyframes(): void {
       '@keyframes luma_ssh_spin{to{transform:rotate(360deg)}}' +
       '@keyframes luma_ssh_fade{from{opacity:0}to{opacity:1}}' +
       '@keyframes luma_ssh_slide{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}' +
+      '@keyframes luma_ssh_download_pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.15);opacity:.8}}' +
+      '@keyframes luma_ssh_download_glow{0%,100%{box-shadow:0 2px 8px rgba(0,0,0,.4),0 0 8px rgba(102,192,255,.3)}50%{box-shadow:0 2px 8px rgba(0,0,0,.4),0 0 16px rgba(102,192,255,.6)}}' +
 
       // ── Action button ──
       '.luma-ssh-action-button:not([aria-disabled="true"]):hover{' +

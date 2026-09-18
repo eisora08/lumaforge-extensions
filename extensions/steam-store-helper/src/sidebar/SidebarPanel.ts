@@ -377,18 +377,6 @@ function renderDownloadsTab(container: HTMLElement) {
   _downloadsPollSeq++;
   var seq = _downloadsPollSeq;
 
-  var activeSource = state.activeDownloads;
-  var activeDepot = state.activeDepotJobs;
-
-  if (activeSource.length === 0 && activeDepot.length === 0) {
-    container.innerHTML = '<div style="text-align:center;padding:40px;color:#8f98a0;">' +
-      '<div style="margin-bottom:12px;font-size:32px;opacity:.3;">' + svgDownload() + '</div>' +
-      '<div style="font-size:13px;">No active downloads</div>' +
-      '<div style="font-size:11px;margin-top:6px;opacity:.6;">Start a download from any game page</div>' +
-      '</div>';
-    return;
-  }
-
   var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Active Downloads</div>';
   html += '<div id="luma-downloads-list"></div>';
   html += '</div>';
@@ -400,6 +388,19 @@ function renderDownloadsTab(container: HTMLElement) {
   function renderCards() {
     if (seq !== _downloadsPollSeq) return;
     var cardsHtml = '';
+
+    var activeSource = state.activeDownloads;
+    var activeDepot = state.activeDepotJobs;
+
+    if (activeSource.length === 0 && activeDepot.length === 0) {
+      cardsHtml = '<div style="text-align:center;padding:24px;color:#8f98a0;">' +
+        '<div style="margin-bottom:8px;font-size:24px;opacity:.3;">' + svgDownload() + '</div>' +
+        '<div style="font-size:13px;">No active downloads</div>' +
+        '<div style="font-size:11px;margin-top:4px;opacity:.6;">Start a download from any game page</div>' +
+        '</div>';
+      listEl.innerHTML = cardsHtml;
+      return;
+    }
 
     // Source downloads (from extension)
     for (var i = 0; i < state.activeDownloads.length; i++) {
@@ -587,7 +588,7 @@ function renderActiveCard(opts: {
 function pollSourceDownloads(seq: number) {
   for (var i = 0; i < state.activeDownloads.length; i++) {
     var dl = state.activeDownloads[i];
-    (function(download, index) {
+    (function(download) {
       fetch(bridgeUrl('/api/download-status/' + download.requestId), { method: 'GET', mode: 'cors', cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -599,11 +600,11 @@ function pollSourceDownloads(seq: number) {
           download.totalBytes = data.totalBytes || 0;
           if (data.status === 'completed' || data.status === 'failed') {
             clearSpeedSamples(download.requestId);
-            state.activeDownloads.splice(index, 1);
+            state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== download.requestId; });
           }
         })
         .catch(function() {});
-    })(dl, i);
+    })(dl);
   }
 }
 
@@ -613,7 +614,7 @@ function pollSourceDownloads(seq: number) {
 function pollDepotDownloads(seq: number) {
   for (var i = 0; i < state.activeDepotJobs.length; i++) {
     var job = state.activeDepotJobs[i];
-    (function(download, index) {
+    (function(download) {
       fetch(bridgeUrl('/api/depot-download-status/' + download.jobId), { method: 'GET', mode: 'cors', cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -626,11 +627,11 @@ function pollDepotDownloads(seq: number) {
           download.status = data.status || 'downloading';
           if (data.status === 'completed' || data.status === 'failed') {
             clearSpeedSamples(download.jobId);
-            state.activeDepotJobs.splice(index, 1);
+            state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== download.jobId; });
           }
         })
         .catch(function() {});
-    })(job, i);
+    })(job);
   }
 }
 
@@ -742,9 +743,11 @@ function esc(s: string): string {
 // ---------------------------------------------------------------------------
 // Open sidebar
 // ---------------------------------------------------------------------------
-export function openSidebar() {
+export function openSidebar(initialTab?: string) {
   if (document.getElementById(SIDEBAR_ID)) return;
   ensureKeyframes();
+
+  if (initialTab) currentTab = initialTab;
 
   var backdrop = document.createElement('div');
   backdrop.id = BACKDROP_ID;

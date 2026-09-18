@@ -355,6 +355,9 @@ export function startDepotDownload(appId: string): void {
       if (!d || !d.ok) throw new Error((d && d.message) || 'Failed to start download');
       ms.jobId = d.jobId;
 
+      // Mark app as installing
+      state.installingAppIds[appId] = true;
+
       // Track in activeDepotJobs for sidebar
       state.activeDepotJobs.push({
         jobId: d.jobId,
@@ -454,8 +457,6 @@ export function startDepotDownloadPoll(jobId: string, appId: string): void {
 
   function poll() {
     if (seq !== _depotPollSeq) return;
-    var ms = state.depotModalState;
-    if (!ms || ms.jobId !== jobId) return;
 
     fetch(depotDownloadStatusUrl(jobId), { method: 'GET', mode: 'cors', cache: 'no-store' })
       .then(function (r) {
@@ -466,7 +467,11 @@ export function startDepotDownloadPoll(jobId: string, appId: string): void {
         if (seq !== _depotPollSeq) return;
         if (!d || !d.ok) throw new Error((d && d.message) || 'Invalid response');
 
-        updateDepotProgressUI(d);
+        // Only update modal UI if modal is still open for this job
+        var ms = state.depotModalState;
+        if (ms && ms.jobId === jobId) {
+          updateDepotProgressUI(d);
+        }
 
         // Update activeDepotJobs entry with progress
         for (var i = 0; i < state.activeDepotJobs.length; i++) {
@@ -547,6 +552,7 @@ export function updateDepotProgressUI(d: any): void {
 export function showDepotDownloadSuccess(appId: string): void {
   var jobId = state.depotModalState ? state.depotModalState.jobId : null;
   state.depotModalState = null;
+  delete state.installingAppIds[appId];
   if (jobId) {
     state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== jobId; });
   }
@@ -596,7 +602,9 @@ export function showDepotDownloadSuccess(appId: string): void {
 export function showDepotDownloadError(message: string): void {
   if (state.depotModalState) {
     var jobId = state.depotModalState.jobId;
+    var appId = state.depotModalState.appId;
     state.depotModalState.downloading = false;
+    delete state.installingAppIds[appId];
     if (jobId) {
       state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== jobId; });
     }

@@ -1,5 +1,5 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, NAMESPACE } from '../core/state';
-import { svgGear, svgX, svgSpinner, svgErrorCircle } from '../ui/svg';
+import { svgGear, svgX, svgSpinner, svgErrorCircle, svgDownload } from '../ui/svg';
 import { ST } from '../ui/styles';
 import { esc, bridgeUrl } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
@@ -7,6 +7,8 @@ import { closeModal } from './source';
 import { openSidebar } from '../sidebar/SidebarPanel';
 
 var SETTINGS_BTN_ID = 'luma-ssh-settings-btn';
+var _settingsBtnTimer: ReturnType<typeof setInterval> | null = null;
+var _settingsBtnHasDownloads = false;
 
 export function ensureSettingsButton(): void {
   try {
@@ -16,8 +18,8 @@ export function ensureSettingsButton(): void {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.id = SETTINGS_BTN_ID;
-    btn.setAttribute('aria-label', 'LumaForge Settings');
-    btn.title = 'LumaForge Provider Settings';
+    btn.setAttribute('aria-label', 'LumaForge');
+    btn.title = 'LumaForge';
     btn.innerHTML = svgGear();
     btn.setAttribute('style',
       'position:fixed;bottom:16px;right:16px;z-index:2147483647;' +
@@ -31,27 +33,67 @@ export function ensureSettingsButton(): void {
       btn.style.background = 'rgba(50,50,65,.95)';
       btn.style.color = '#fff';
       btn.style.borderColor = 'rgba(255,255,255,.3)';
-      btn.style.transform = 'scale(1.1)';
+      if (!_settingsBtnHasDownloads) btn.style.transform = 'scale(1.1)';
     });
     btn.addEventListener('mouseleave', function() {
-      btn.style.background = 'rgba(30,30,40,.85)';
-      btn.style.color = 'rgba(255,255,255,.6)';
-      btn.style.borderColor = 'rgba(255,255,255,.15)';
+      btn.style.background = _settingsBtnHasDownloads ? 'rgba(102,192,255,.2)' : 'rgba(30,30,40,.85)';
+      btn.style.color = _settingsBtnHasDownloads ? '#66c0ff' : 'rgba(255,255,255,.6)';
+      btn.style.borderColor = _settingsBtnHasDownloads ? 'rgba(102,192,255,.4)' : 'rgba(255,255,255,.15)';
       btn.style.transform = 'scale(1)';
     });
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      openSidebar();
+      openSidebar('downloads');
     });
 
     (document.body || document.documentElement).appendChild(btn);
     console.log('[LUMA_INJECT] Floating settings button injected');
+
+    // Start reactive icon update timer
+    startSettingsBtnTimer();
   } catch (e) {
     console.error('[CEF_INJECT_ERROR] ensureSettingsButton:', e);
   }
 }
 
+function startSettingsBtnTimer(): void {
+  if (_settingsBtnTimer) return;
+  _settingsBtnTimer = setInterval(function() {
+    var btn = document.getElementById(SETTINGS_BTN_ID) as HTMLElement | null;
+    if (!btn) { stopSettingsBtnTimer(); return; }
+
+    var hasDownloads = state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0;
+
+    if (hasDownloads !== _settingsBtnHasDownloads) {
+      _settingsBtnHasDownloads = hasDownloads;
+      if (hasDownloads) {
+        btn.innerHTML = svgDownload();
+        btn.title = 'LumaForge \u2014 Active Downloads';
+        btn.style.background = 'rgba(102,192,255,.15)';
+        btn.style.color = '#66c0ff';
+        btn.style.borderColor = 'rgba(102,192,255,.3)';
+        btn.style.animation = 'luma_ssh_download_pulse 2s ease-in-out infinite, luma_ssh_download_glow 2s ease-in-out infinite';
+      } else {
+        btn.innerHTML = svgGear();
+        btn.title = 'LumaForge';
+        btn.style.background = 'rgba(30,30,40,.85)';
+        btn.style.color = 'rgba(255,255,255,.6)';
+        btn.style.borderColor = 'rgba(255,255,255,.15)';
+        btn.style.animation = 'none';
+      }
+    }
+  }, 1000);
+}
+
+function stopSettingsBtnTimer(): void {
+  if (_settingsBtnTimer) {
+    clearInterval(_settingsBtnTimer);
+    _settingsBtnTimer = null;
+  }
+}
+
 export function removeSettingsButton(): void {
+  stopSettingsBtnTimer();
   var btn = document.getElementById(SETTINGS_BTN_ID);
   if (btn) btn.remove();
 }

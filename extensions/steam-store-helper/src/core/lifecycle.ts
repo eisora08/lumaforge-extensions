@@ -20,6 +20,7 @@ export function teardown(): void {
     stopDownloadPoll();
     state.activeDownloads = [];
     state.activeDepotJobs = [];
+    state.installingAppIds = {};
     if (state.providerAbortController) {
       state.providerAbortController.abort();
       state.providerAbortController = null;
@@ -151,6 +152,7 @@ function setupEventDelegation(): void {
     document.body.addEventListener('click', function (e) {
       try {
         if ((e.target as HTMLElement).getAttribute(MODAL_MARKER_ATTR) === MODAL_MARKER_VAL) {
+          if (state.depotModalState && state.depotModalState.downloading) return;
           closeModal();
         }
       } catch (_) { }
@@ -159,6 +161,8 @@ function setupEventDelegation(): void {
     document.addEventListener('keydown', function (e) {
       try {
         if (e.key === 'Escape' || e.keyCode === 27) {
+          // Don't close depot modal while downloading
+          if (state.depotModalState && state.depotModalState.downloading) return;
           var modal = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"]');
           if (modal) {
             e.preventDefault();
