@@ -3239,9 +3239,8 @@
       patchHistory();
       setupEventDelegation();
       startObserver();
-      detectBridgePort().then(function () {
-        ensureLumaButtonExists();
-      });
+      ensureLumaButtonExists();
+      detectBridgePort();
       syncNamespaceState();
       console.log('[LUMA_RUNTIME] Version:', LUMA_INJECT_VERSION);
       console.log('[LUMA_RUNTIME] Target URL:', window.location.href);
