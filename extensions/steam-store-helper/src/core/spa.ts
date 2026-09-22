@@ -4,6 +4,7 @@ import { abortPendingRequests, cancelAllRetries, removeButton, getObserverRoot, 
 import { closeModal } from '../modals/source';
 import { stopDownloadPoll } from '../modals/source';
 import { ensureSettingsButton } from '../modals/settings';
+import { openSidebar } from '../sidebar/SidebarPanel';
 
 // ---------------------------------------------------------------------------
 // Reconcile: detect URL/AppID changes and update controls
@@ -17,6 +18,11 @@ export function reconcile(): void {
 
   // Ensure floating settings button exists on every page
   ensureSettingsButton();
+
+  // Re-create sidebar if it was open before navigation
+  if (state.sidebarOpen && !document.getElementById('luma-sidebar-panel')) {
+    openSidebar(state.currentTab);
+  }
 
   console.log('[LUMA_WATCHER] Reconcile start');
   console.log('[LUMA_WATCHER] Current URL:', url);

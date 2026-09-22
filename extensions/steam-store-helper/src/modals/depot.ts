@@ -1,11 +1,14 @@
-import { state, BTN_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, LUMA_INJECT_VERSION } from '../core/state';
+import { state, BTN_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, LUMA_INJECT_VERSION, saveSessionState } from '../core/state';
 import { svgBox, svgX, svgSpinner, svgErrorCircle, svgDownload, svgCheck, svgRefresh, svgLibrary } from '../ui/svg';
 import { ST } from '../ui/styles';
-import { depotsUrl, depotDownloadUrl, depotDownloadStatusUrl, openLibraryUrl, restartSteamUrl, getModalBody } from '../ui/helpers';
+import { depotsUrl, depotDownloadUrl, depotDownloadStatusUrl, openLibraryUrl, restartSteamUrl, getModalBody, steamLibraryFoldersUrl, downloadsQueueAddUrl } from '../ui/helpers';
 import { formatBytes, formatOs, escapeHtml } from '../ui/dom';
 import { closeModal } from './source';
+import { applyInstallingState, applyInLibraryState } from '../ui/button';
+import { retryFetch } from '../api/bridge';
+import { openSidebar } from '../sidebar/SidebarPanel';
 
-var restartSteamBtnEl: HTMLButtonElement | null = null;
+var _steamLibraryFolders: Array<{ path: string; commonPath: string; label: string }> | null = null;
 
 // ---------------------------------------------------------------------------
 // Depot download modal (Linux only)
@@ -16,6 +19,18 @@ export function openDepotModal(appId: string): void {
 
     state.savedFocusElement = document.activeElement;
     state.depotModalState = { appId: appId, depots: [], selected: {}, outputDir: '', downloading: false, jobId: null };
+
+    // Fetch Steam library folders in background
+    if (!_steamLibraryFolders) {
+      retryFetch(steamLibraryFoldersUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok && d.folders && d.folders.length > 0) {
+            _steamLibraryFolders = d.folders;
+          }
+        })
+        .catch(function () {});
+    }
 
     var backdrop = document.createElement('div');
     backdrop.setAttribute(MODAL_MARKER_ATTR, MODAL_MARKER_VAL);
@@ -65,6 +80,7 @@ export function openDepotModal(appId: string): void {
     closeBtn.setAttribute('aria-label', 'Close');
     closeBtn.innerHTML = svgX();
     closeBtn.addEventListener('click', function () {
+      if (state.depotModalState && state.depotModalState.downloading) return;
       state.depotModalState = null;
       closeModal();
     });
@@ -257,6 +273,21 @@ export function renderDepotList(appId: string): void {
   html += renderGroup('DLC', dlcDepots, 'dlc');
   html += renderGroup('Shared', sharedDepots, 'shared');
 
+  // Location dropdown
+  html += '<div style="margin:12px 0;padding:12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);">';
+  html += '<div style="font-size:11px;font-weight:600;color:#8f98a0;margin-bottom:6px;">Download Location</div>';
+  html += '<select id="luma-depot-location" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:#1b2838;color:#fff;font-size:12px;cursor:pointer;">';
+  if (_steamLibraryFolders && _steamLibraryFolders.length > 0) {
+    for (var fi = 0; fi < _steamLibraryFolders.length; fi++) {
+      var folder = _steamLibraryFolders[fi];
+      var isSelected = fi === 0 ? ' selected' : '';
+      html += '<option value="' + escapeHtml(folder.path) + '"' + isSelected + '>' + escapeHtml(folder.label) + ' \u2014 ' + escapeHtml(folder.commonPath) + '</option>';
+    }
+  } else if (ms.outputDir) {
+    html += '<option value="' + escapeHtml(ms.outputDir) + '">' + escapeHtml(ms.outputDir) + '/steamapps/common</option>';
+  }
+  html += '</select></div>';
+
   // Total bar
   html += '<div style="' + ST.depotTotal + '">';
   html += '<span><strong>' + totalSelected + '</strong> depot' + (totalSelected !== 1 ? 's' : '') + ' selected \u00b7 <strong>' + formatBytes(totalSize) + '</strong></span>';
@@ -322,12 +353,15 @@ export function startDepotDownload(appId: string): void {
   var selectedDepots = ms.depots.filter(function (d) { return ms!.selected[d.depotId]; });
   if (selectedDepots.length === 0) return;
 
+  var locationSelect = document.getElementById('luma-depot-location') as HTMLSelectElement | null;
+  var selectedOutputDir = locationSelect ? locationSelect.value : (ms.outputDir || '');
+
   ms.downloading = true;
 
   var payload = JSON.stringify({
     appId: String(appId),
     gameName: ms.gameName || 'Unknown',
-    outputDir: ms.outputDir || '',
+    outputDir: selectedOutputDir,
     depots: selectedDepots.map(function (d) {
       return {
         depotId: d.depotId,
@@ -338,7 +372,7 @@ export function startDepotDownload(appId: string): void {
     }),
   });
 
-  fetch(depotDownloadUrl(), {
+  fetch(downloadsQueueAddUrl(), {
     method: 'POST',
     mode: 'cors',
     cache: 'no-store',
@@ -350,30 +384,14 @@ export function startDepotDownload(appId: string): void {
       return r.json();
     })
     .then(function (d) {
-      if (!d || !d.ok) throw new Error((d && d.message) || 'Failed to start download');
-      ms.jobId = d.jobId;
+      if (!d || !d.ok) throw new Error((d && d.message) || 'Failed to add to queue');
 
-      // Mark app as installing
       state.installingAppIds[appId] = true;
+      applyInstallingState(appId);
 
-      // Track in activeDepotJobs for sidebar
-      state.activeDepotJobs.push({
-        jobId: d.jobId,
-        appId: appId,
-        gameName: ms.gameName,
-        outputDir: ms.outputDir,
-        phase: 'Starting download...',
-        progress: 0,
-        speed: 0,
-        bytesDownloaded: 0,
-        totalBytes: 0,
-        status: 'downloading',
-        pollSeq: 0,
-        pollTimer: null,
-      });
-
-      showDepotProgress(appId, d.jobId);
-      startDepotDownloadPoll(d.jobId, appId);
+      state.depotModalState = null;
+      closeModal();
+      openSidebar('downloads');
     })
     .catch(function (err) {
       ms.downloading = false;
@@ -413,228 +431,11 @@ export function restartSteam(appId: string): void {
     .then(function (res) {
       if (res.ok && res.data && res.data.ok) {
         console.log('[LUMA_INJECT] Steam restarted successfully');
-        if (restartSteamBtnEl) {
-          restartSteamBtnEl.innerHTML = svgCheck() + '<span>RESTARTED</span>';
-          restartSteamBtnEl.disabled = true;
-        }
       } else {
         console.error('[LUMA_INJECT] Steam restart failed:', res.data && res.data.message);
-        if (restartSteamBtnEl) {
-          restartSteamBtnEl.innerHTML = svgRefresh() + '<span>RESTART STEAM</span>';
-          restartSteamBtnEl.disabled = false;
-        }
       }
     })
     .catch(function (err) {
       console.error('[LUMA_INJECT] Steam restart error:', err);
-      if (restartSteamBtnEl) {
-        restartSteamBtnEl.innerHTML = svgRefresh() + '<span>RESTART STEAM</span>';
-        restartSteamBtnEl.disabled = false;
-      }
     });
-}
-
-export function showDepotProgress(appId: string, jobId: string): void {
-  var body = getModalBody() as HTMLElement;
-  if (!body) return;
-
-  body.innerHTML =
-    '<div style="' + ST.depotProgressWrap + '">' +
-    '<div style="margin-bottom:14px;">' + svgSpinner() + '</div>' +
-    '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">Downloading Content\u2026</div>' +
-    '<div id="luma-depot-progress-msg" style="' + ST.depotProgressLabel + '">Starting download...</div>' +
-    '<div style="' + ST.depotProgressBar + '"><div id="luma-depot-progress-fill" style="' + ST.depotProgressFill + '"></div></div>' +
-    '<div id="luma-depot-progress-detail" style="font-size:11px;color:#66c0ff;"></div>' +
-    '</div>';
-}
-
-var _depotPollSeq = 0;
-export function startDepotDownloadPoll(jobId: string, appId: string): void {
-  _depotPollSeq++;
-  var seq = _depotPollSeq;
-
-  function poll() {
-    if (seq !== _depotPollSeq) return;
-
-    fetch(depotDownloadStatusUrl(jobId), { method: 'GET', mode: 'cors', cache: 'no-store' })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function (d) {
-        if (seq !== _depotPollSeq) return;
-        if (!d || !d.ok) throw new Error((d && d.message) || 'Invalid response');
-
-        // Only update modal UI if modal is still open for this job
-        var ms = state.depotModalState;
-        if (ms && ms.jobId === jobId) {
-          updateDepotProgressUI(d);
-        }
-
-        // Update activeDepotJobs entry with progress
-        for (var i = 0; i < state.activeDepotJobs.length; i++) {
-          if (state.activeDepotJobs[i].jobId === jobId) {
-            state.activeDepotJobs[i].phase = d.phase || d.message || d.status || '';
-            state.activeDepotJobs[i].progress = d.progress || 0;
-            state.activeDepotJobs[i].bytesDownloaded = d.bytesRead || 0;
-            state.activeDepotJobs[i].totalBytes = d.totalBytes || 0;
-            state.activeDepotJobs[i].status = d.status || 'downloading';
-            break;
-          }
-        }
-
-        if (d.status === 'completed') {
-          showDepotDownloadSuccess(appId);
-          return;
-        }
-        if (d.status === 'failed') {
-          showDepotDownloadError(d.error || 'Download failed');
-          return;
-        }
-        // Continue polling for 'integrating' status (post-download Steam integration)
-        if (d.status === 'integrating') {
-          setTimeout(poll, 1500);
-          return;
-        }
-
-        setTimeout(poll, 1000);
-      })
-      .catch(function () {
-        if (seq !== _depotPollSeq) return;
-        setTimeout(poll, 2000);
-      });
-  }
-
-  setTimeout(poll, 1000);
-}
-
-export function updateDepotProgressUI(d: any): void {
-  try {
-    var fill = document.getElementById('luma-depot-progress-fill') as HTMLElement | null;
-    var msg = document.getElementById('luma-depot-progress-msg') as HTMLElement | null;
-    var detail = document.getElementById('luma-depot-progress-detail') as HTMLElement | null;
-
-    if (fill) {
-      fill.style.width = (d.progress || 0) + '%';
-    }
-    if (msg) {
-      if (d.status === 'integrating') {
-        msg.textContent = 'Integrating with Steam\u2026';
-        if (fill) fill.style.width = '100%';
-      } else {
-        var phase = d.phase || 'downloading';
-        var phaseLabel = phase === 'validating' ? 'Validating' : phase === 'extracting' ? 'Extracting' : 'Downloading';
-        msg.textContent = phaseLabel + ' \u2014 ' + (d.progress || 0).toFixed(1) + '%';
-      }
-    }
-    if (detail) {
-      var parts: string[] = [];
-      if (d.status === 'integrating') {
-        parts.push('Registering game in Steam library');
-      } else {
-        if (d.bytesRead && d.totalBytes) {
-          parts.push(formatBytes(d.bytesRead) + ' / ' + formatBytes(d.totalBytes));
-        }
-        if (d.speedBytesPerSec) {
-          parts.push(formatBytes(d.speedBytesPerSec) + '/s');
-        }
-      }
-      if (d.message) {
-        parts.push(d.message);
-      }
-      detail.textContent = parts.join(' \u00b7 ');
-    }
-  } catch (_) { }
-}
-
-export function showDepotDownloadSuccess(appId: string): void {
-  var jobId = state.depotModalState ? state.depotModalState.jobId : null;
-  state.depotModalState = null;
-  delete state.installingAppIds[appId];
-  if (jobId) {
-    state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== jobId; });
-  }
-  var body = getModalBody() as HTMLElement;
-  if (!body) return;
-
-  var restartBtn = IS_LINUX
-    ? '<button type="button" id="luma-depot-restart-steam" style="' + ST.primaryBtn + '">' + svgRefresh() + '<span>RESTART STEAM</span></button>'
-    : '';
-
-  body.innerHTML =
-    '<div style="' + ST.successWrap + '">' +
-    '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
-    '<div style="' + ST.successTitle + '">Content Downloaded</div>' +
-    '<div style="' + ST.successDetail + '">Game content has been downloaded and registered in Steam.</div>' +
-    '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
-    restartBtn +
-    '<button type="button" id="luma-depot-open-library" style="' + (IS_LINUX ? ST.secondaryBtn : ST.primaryBtn) + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
-    '<button type="button" id="luma-depot-close" style="' + ST.secondaryBtn + '">CLOSE</button>' +
-    '</div>' +
-    '</div>';
-
-  var restartBtnEl = document.getElementById('luma-depot-restart-steam') as HTMLButtonElement | null;
-  if (restartBtnEl) {
-    restartBtnEl.addEventListener('click', function () {
-      restartSteamBtnEl = restartBtnEl;
-      restartBtnEl.disabled = true;
-      restartBtnEl.innerHTML = svgSpinner() + '<span>RESTARTING...</span>';
-      restartSteam(appId);
-    });
-  }
-  var openLibBtn = document.getElementById('luma-depot-open-library');
-  if (openLibBtn) {
-    openLibBtn.addEventListener('click', function () {
-      fetch(openLibraryUrl(appId), { method: 'POST', mode: 'cors', cache: 'no-store' }).catch(function () { });
-      closeModal();
-    });
-  }
-  var closeBtnEl = document.getElementById('luma-depot-close');
-  if (closeBtnEl) {
-    closeBtnEl.addEventListener('click', function () {
-      closeModal();
-    });
-  }
-}
-
-export function showDepotDownloadError(message: string): void {
-  if (state.depotModalState) {
-    var jobId = state.depotModalState.jobId;
-    var appId = state.depotModalState.appId;
-    state.depotModalState.downloading = false;
-    delete state.installingAppIds[appId];
-    if (jobId) {
-      state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== jobId; });
-    }
-  }
-  var body = getModalBody() as HTMLElement;
-  if (!body) return;
-
-  body.innerHTML =
-    '<div style="' + ST.errorWrap + '">' +
-    '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
-    '<div style="' + ST.errorTitle + '">Download Failed</div>' +
-    '<div style="' + ST.errorMsgNew + '">' + escapeHtml(message) + '</div>' +
-    '<div style="' + ST.errorActions + '">' +
-    '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
-    '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">CLOSE</button>' +
-    '</div>' +
-    '</div>';
-
-  var retryBtn = document.getElementById('luma-depot-retry');
-  if (retryBtn) {
-    retryBtn.addEventListener('click', function () {
-      if (state.depotModalState) {
-        state.depotModalState.downloading = false;
-        renderDepotList(state.depotModalState.appId);
-      }
-    });
-  }
-  var closeBtnEl = document.getElementById('luma-depot-close');
-  if (closeBtnEl) {
-    closeBtnEl.addEventListener('click', function () {
-      state.depotModalState = null;
-      closeModal();
-    });
-  }
 }

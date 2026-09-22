@@ -90,9 +90,9 @@ export function setButtonLumaState(appId: string, lumaState: string): void {
 
 export function applyInLibraryState(appId: string): void {
   if (IS_LINUX) {
-    setButtonState(appId, ST.btnInstalledClickable, svgCheck() + '<span>IN LIBRARY</span>', false);
+    setButtonState(appId, ST.btnInstall, svgDownload() + '<span>INSTALL</span>', false);
     setButtonLumaState(appId, 'in-library');
-    console.log('[LUMA_INJECT] App', appId, 'already in Luma library (clickable — Linux)');
+    console.log('[LUMA_INJECT] App', appId, 'already in Luma library (INSTALL — Linux)');
   } else {
     setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>IN LIBRARY</span>', true);
     setButtonLumaState(appId, 'in-library');

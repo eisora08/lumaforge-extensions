@@ -168,7 +168,7 @@ export function esc(s: string): string {
 
 export function detectBridgePort(): Promise<void> {
   if (bridgeConfig.detected) return Promise.resolve();
-  var ports = [21775, 21777];
+  var ports = [21775, 21776, 21777];
   var tryPort = function (i: number): Promise<void> {
     if (i >= ports.length) return Promise.resolve();
     var url = BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + ports[i] + '/health';
@@ -178,7 +178,7 @@ export function detectBridgePort(): Promise<void> {
         if (d && d.status === 'ok') {
           bridgeConfig.port = ports[i];
           bridgeConfig.detected = true;
-          console.log('[LUMA_INJECT] Detected Tauri bridge on port', bridgeConfig.port);
+          console.log('[LUMA_INJECT] Detected bridge on port', bridgeConfig.port);
         }
       })
       .catch(function () { return tryPort(i + 1); });
@@ -222,8 +222,40 @@ export function depotDownloadStatusUrl(jobId: string): string {
   return bridgeUrl('/api/depot-download-status/' + jobId);
 }
 
+export function steamLibraryFoldersUrl(): string {
+  return bridgeUrl('/api/steam-library-folders');
+}
+
+export function downloadsQueueUrl(): string {
+  return bridgeUrl('/api/downloads-queue');
+}
+
+export function downloadsQueueAddUrl(): string {
+  return bridgeUrl('/api/downloads-queue/add');
+}
+
+export function downloadsQueueRemoveUrl(id: string): string {
+  return bridgeUrl('/api/downloads-queue/remove/' + id);
+}
+
 export function restartSteamUrl(): string {
   return bridgeUrl('/api/restart-steam');
+}
+
+export function downloadsQueueClearHistoryUrl(): string {
+  return bridgeUrl('/api/downloads-queue/clear-history');
+}
+
+export function downloadsQueueRemoveHistoryUrl(id: string): string {
+  return bridgeUrl('/api/downloads-queue/remove-history/' + id);
+}
+
+export function luaFilesUrl(): string {
+  return bridgeUrl('/api/lua-files');
+}
+
+export function luaFileDeleteUrl(appId: string): string {
+  return bridgeUrl('/api/lua-files/' + appId);
 }
 
 export function providerStatsUrl(): string {

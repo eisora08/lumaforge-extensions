@@ -42,3 +42,6 @@ export function svgRefresh(): string {
 export function svgGear(): string {
   return '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="2.5"/><path d="M13.3 10a1.2 1.2 0 00.2 1.3l.1.1a1.45 1.45 0 11-2 2l-.1-.1a1.2 1.2 0 00-1.3-.2 1.2 1.2 0 00-.7 1.1v.2a1.45 1.45 0 01-2.9 0v-.1a1.2 1.2 0 00-.8-1.1 1.2 1.2 0 00-1.3.2l-.1.1a1.45 1.45 0 11-2-2l.1-.1a1.2 1.2 0 00.2-1.3 1.2 1.2 0 00-1.1-.7h-.2a1.45 1.45 0 010-2.9h.1a1.2 1.2 0 001.1-.8 1.2 1.2 0 00-.2-1.3l-.1-.1a1.45 1.45 0 112-2l.1.1a1.2 1.2 0 001.3.2h.1a1.2 1.2 0 00.7-1.1v-.2a1.45 1.45 0 012.9 0v.1a1.2 1.2 0 00.7 1.1 1.2 1.2 0 001.3-.2l.1-.1a1.45 1.45 0 112 2l-.1.1a1.2 1.2 0 00-.2 1.3v.1a1.2 1.2 0 001.1.7h.2a1.45 1.45 0 010 2.9h-.1a1.2 1.2 0 00-1.1.7z"/></svg>';
 }
+export function svgPlay(): string {
+  return '<svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" stroke="none"><path d="M4 2.5v11l9-5.5z"/></svg>';
+}

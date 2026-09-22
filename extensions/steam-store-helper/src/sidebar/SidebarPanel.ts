@@ -1,17 +1,74 @@
-import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL } from '../core/state';
-import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox } from '../ui/svg';
+import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
+import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
-import { bridgeUrl, depotsUrl, restartSteamUrl } from '../ui/helpers';
+import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
+import { openDepotModal, restartSteam } from '../modals/depot';
+import { openSourceModal } from '../modals/source';
+import { applyInLibraryState } from '../ui/button';
 
 var SIDEBAR_ID = 'luma-sidebar-panel';
 var BACKDROP_ID = 'luma-sidebar-backdrop';
 var LUMA_VERSION = '2.6.0';
 
-var currentTab = 'downloads';
 var _downloadsPollTimer: ReturnType<typeof setTimeout> | null = null;
 var _downloadsPollSeq = 0;
+var _shownDepotCompletions: Record<string, boolean> = {};
+
+function showSteamRestartDialog(appId: string, gameName: string): void {
+  var overlay = document.createElement('div');
+  overlay.id = 'luma-steam-restart-overlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);';
+
+  var restartBtnHtml = IS_LINUX
+    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:#66c0ff;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' RESTART STEAM</button>'
+    : '';
+
+  overlay.innerHTML =
+    '<div style="background:#1b2838;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:28px 24px 20px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);">' +
+    '<div style="margin-bottom:12px;">' + svgCheck(32, 32) + '</div>' +
+    '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;">Content Downloaded</div>' +
+    '<div style="font-size:12px;color:#8f98a0;margin-bottom:4px;">' + escapeHtml(gameName) + '</div>' +
+    '<div style="font-size:12px;color:#8f98a0;margin-bottom:16px;">Game content has been downloaded and registered in Steam.</div>' +
+    (IS_LINUX
+      ? '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(102,192,255,.08);border:1px solid rgba(102,192,255,.15);font-size:12px;color:#c7d5e0;">Steam needs to be restarted to detect the new game.<br>Would you like to restart now?</div>'
+      : '') +
+    '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+    restartBtnHtml +
+    '<button type="button" id="luma-sr-library" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#c7d5e0;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgLibrary() + ' VIEW IN LIBRARY</button>' +
+    '<button type="button" id="luma-sr-close" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8f98a0;font-size:13px;cursor:pointer;">' + (IS_LINUX ? 'RESTART LATER' : 'CLOSE') + '</button>' +
+    '</div>' +
+    '</div>';
+
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  var restartBtn = document.getElementById('luma-sr-restart') as HTMLButtonElement | null;
+  if (restartBtn) {
+    restartBtn.addEventListener('click', function () {
+      restartBtn.disabled = true;
+      restartBtn.innerHTML = svgSpinner() + ' RESTARTING...';
+      restartSteam(appId);
+    });
+  }
+  var libBtn = document.getElementById('luma-sr-library');
+  if (libBtn) {
+    libBtn.addEventListener('click', function () {
+      fetch(openLibraryUrl(appId), { method: 'POST', mode: 'cors', cache: 'no-store' }).catch(function () { });
+      overlay.remove();
+    });
+  }
+  var closeBtn = document.getElementById('luma-sr-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function () {
+      overlay.remove();
+    });
+  }
+}
 
 var TABS = [
   { id: 'dashboard', label: 'Dashboard' },
@@ -27,10 +84,16 @@ function closeSidebar() {
   if (panel) panel.remove();
   if (backdrop) backdrop.remove();
   stopDownloadsPoll();
+  state.sidebarOpen = false;
+  saveSessionState();
+  // Show floating settings button again
+  var settingsBtn = document.getElementById('luma-ssh-settings-btn') as HTMLElement | null;
+  if (settingsBtn) settingsBtn.style.display = '';
 }
 
 function switchTab(tabId: string) {
-  currentTab = tabId;
+  state.currentTab = tabId;
+  saveSessionState();
   var panel = document.getElementById(SIDEBAR_ID);
   if (!panel) return;
   var tabs = panel.querySelectorAll('.luma-sidebar-tab');
@@ -152,6 +215,13 @@ function renderDashboardTab(container: HTMLElement) {
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
   html += '<button class="luma-sidebar-btn secondary" id="luma-dash-refresh">Refresh</button>';
   html += '</div></div>';
+
+  // Lua Scripts section
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Lua Scripts</div>';
+  html += '<div id="luma-dash-lua-container" style="max-height:300px;overflow-y:auto;padding-right:4px;">';
+  html += '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">Loading...</div>';
+  html += '</div></div>';
+
   container.innerHTML = html;
 
   var refreshBtn = document.getElementById('luma-dash-refresh');
@@ -169,6 +239,68 @@ function renderDashboardTab(container: HTMLElement) {
       }
     })
     .catch(function() {});
+
+  // Fetch Lua files
+  fetch(luaFilesUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      var luaContainer = document.getElementById('luma-dash-lua-container');
+      if (!luaContainer) return;
+      if (!data.ok || !data.files || data.files.length === 0) {
+        luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">No Lua scripts installed</div>';
+        return;
+      }
+
+      var h = '';
+      for (var i = 0; i < data.files.length; i++) {
+        var f = data.files[i];
+        h += '<div class="luma-stat-card" data-lua-appid="' + esc(f.appId) + '" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
+        h += '<div class="luma-stat-icon blue">' + svgBox() + '</div>';
+        h += '<div style="flex:1;min-width:0;">';
+        h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
+        h += '<div style="font-size:10px;color:#8f98a0;">ID: ' + esc(f.appId) + ' · ' + esc(f.filename) + '</div>';
+        h += '</div>';
+        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="Remove Lua script" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 8px;color:#e74c3c;font-size:10px;cursor:pointer;white-space:flex-shrink:0;">Remove</button>';
+        h += '</div>';
+      }
+      luaContainer.innerHTML = h;
+
+      // Wire up delete buttons
+      var deleteBtns = luaContainer.querySelectorAll('[data-lua-delete]');
+      for (var j = 0; j < deleteBtns.length; j++) {
+        (function(btn: Element) {
+          btn.addEventListener('click', function() {
+            var appId = btn.getAttribute('data-lua-delete');
+            if (!appId) return;
+            var card = luaContainer.querySelector('[data-lua-appid="' + appId + '"]');
+            (btn as HTMLButtonElement).textContent = '...';
+            (btn as HTMLButtonElement).disabled = true;
+
+            fetch(luaFileDeleteUrl(appId), { method: 'DELETE', mode: 'cors', cache: 'no-store' })
+              .then(function(r) { return r.json(); })
+              .then(function(result) {
+                if (result.ok && card) {
+                  (card as HTMLElement).style.transition = 'opacity .3s, transform .3s';
+                  (card as HTMLElement).style.opacity = '0';
+                  (card as HTMLElement).style.transform = 'translateX(20px)';
+                  setTimeout(function() { card.remove(); }, 300);
+                } else {
+                  (btn as HTMLButtonElement).textContent = 'Remove';
+                  (btn as HTMLButtonElement).disabled = false;
+                }
+              })
+              .catch(function() {
+                (btn as HTMLButtonElement).textContent = 'Remove';
+                (btn as HTMLButtonElement).disabled = false;
+              });
+          });
+        })(deleteBtns[j]);
+      }
+    })
+    .catch(function() {
+      var luaContainer = document.getElementById('luma-dash-lua-container');
+      if (luaContainer) luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">No Lua scripts installed</div>';
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -380,97 +512,219 @@ function renderDownloadsTab(container: HTMLElement) {
   var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Active Downloads</div>';
   html += '<div id="luma-downloads-list"></div>';
   html += '</div>';
+  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="luma-history-toggle"><span>History</span><div style="display:flex;align-items:center;gap:6px;"><button id="luma-clear-history-btn" style="background:none;border:none;color:#8f98a0;font-size:10px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="Clear History">Clear</button><span style="font-size:10px;color:#8f98a0;">&#9660;</span></div></div>';
+  html += '<div id="luma-history-list"></div>';
+  html += '</div>';
   container.innerHTML = html;
 
   var listEl = document.getElementById('luma-downloads-list');
-  if (!listEl) return;
+  var historyEl = document.getElementById('luma-history-list');
+  var historyVisible = true;
+
+  // Toggle history visibility
+  var historyToggle = document.getElementById('luma-history-toggle');
+  if (historyToggle && historyEl) {
+    historyToggle.addEventListener('click', function() {
+      historyVisible = !historyVisible;
+      historyEl.style.display = historyVisible ? 'block' : 'none';
+      var arrow = historyToggle.querySelector('span:last-child');
+      if (arrow) arrow.innerHTML = historyVisible ? '&#9660;' : '&#9654;';
+    });
+    renderHistory();
+  }
+
+  // Clear history button
+  var clearHistoryBtn = document.getElementById('luma-clear-history-btn');
+  if (clearHistoryBtn) {
+    clearHistoryBtn.addEventListener('click', function(e) {
+      e.stopPropagation();
+      fetch(downloadsQueueClearHistoryUrl(), { method: 'POST', mode: 'cors', cache: 'no-store' })
+        .then(function() { renderCards(); })
+        .catch(function() {});
+    });
+  }
+
+  function renderHistory(bridgeHistory?: any[]) {
+    if (!historyEl) return;
+    var hHtml = '';
+    var histArr = bridgeHistory || state.downloadHistory || [];
+    for (var h = 0; h < histArr.length; h++) {
+      var hist = histArr[h];
+      var isPaused = hist.status === 'paused';
+      var statusColor = hist.status === 'completed' ? '#67e8f9' : hist.status === 'failed' ? '#f87171' : isPaused ? '#fbbf24' : '#f87171';
+      var statusLabel = hist.status === 'completed' ? 'COMPLETED' : hist.status === 'failed' ? 'FAILED' : isPaused ? 'PAUSED' : 'CANCELLED';
+      var statusBg = hist.status === 'completed' ? 'rgba(103,232,249,.12)' : hist.status === 'failed' ? 'rgba(248,113,113,.12)' : isPaused ? 'rgba(251,191,36,.12)' : 'rgba(248,113,113,.12)';
+      var pct = hist.status === 'completed' ? 100 : hist.status === 'failed' ? (hist.progress || 0) : hist.totalBytes > 0 ? Math.round((hist.bytesDownloaded / hist.totalBytes) * 100) : (hist.progress || 0);
+      var timeAgo = formatTimeAgo(hist.timestamp || hist.completedAt || 0);
+      hHtml += '<div style="padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.03);margin-bottom:6px;border:1px solid rgba(255,255,255,.04);">';
+      hHtml += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">';
+      hHtml += '<div style="font-size:12px;font-weight:600;color:#fff;">' + esc(hist.gameName || 'App ' + hist.appId) + '</div>';
+      hHtml += '<div style="display:flex;align-items:center;gap:4px;">';
+      hHtml += '<div style="padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;background:' + statusBg + ';color:' + statusColor + ';">' + statusLabel + '</div>';
+      hHtml += '<button data-remove-history="' + hist.id + '" style="background:none;border:none;color:#8f98a0;font-size:11px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="Remove">&times;</button>';
+      hHtml += '</div>';
+      hHtml += '</div>';
+      hHtml += '<div style="display:flex;align-items:center;justify-content:space-between;">';
+      hHtml += '<div style="font-size:10px;color:#8f98a0;">' + pct + '%</div>';
+      hHtml += '<div style="font-size:10px;color:#8f98a0;">' + timeAgo + '</div>';
+      hHtml += '</div>';
+      hHtml += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.06);margin-top:6px;overflow:hidden;">';
+      hHtml += '<div style="height:100%;width:' + pct + '%;background:' + statusColor + ';border-radius:2px;"></div>';
+      hHtml += '</div>';
+      if (isPaused) {
+        hHtml += '<button data-resume-history="' + h + '" data-resume-type="' + hist.type + '" data-resume-appid="' + hist.appId + '" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;border:1px solid rgba(102,192,255,.3);background:rgba(102,192,255,.1);color:#66c0ff;font-size:10px;font-weight:600;cursor:pointer;">' + svgPlay() + ' Resume</button>';
+      }
+      hHtml += '</div>';
+    }
+    historyEl.innerHTML = hHtml;
+
+    // Attach resume button handlers
+    var resumeButtons = historyEl.querySelectorAll('[data-resume-history]');
+    for (var b = 0; b < resumeButtons.length; b++) {
+      resumeButtons[b].addEventListener('click', function(this: HTMLElement) {
+        var idx = parseInt(this.getAttribute('data-resume-history') || '-1', 10);
+        var type = this.getAttribute('data-resume-type') || '';
+        var appId = this.getAttribute('data-resume-appid') || '';
+        resumeFromHistory(idx, type, appId);
+      });
+    }
+
+    // Attach remove history button handlers
+    var removeButtons = historyEl.querySelectorAll('[data-remove-history]');
+    for (var r = 0; r < removeButtons.length; r++) {
+      removeButtons[r].addEventListener('click', function(this: HTMLElement) {
+        var id = this.getAttribute('data-remove-history');
+        if (id) {
+          fetch(downloadsQueueRemoveHistoryUrl(id), { method: 'POST', mode: 'cors', cache: 'no-store' })
+            .then(function() { renderCards(); })
+            .catch(function() {});
+        }
+      });
+    }
+  }
 
   function renderCards() {
     if (seq !== _downloadsPollSeq) return;
-    var cardsHtml = '';
 
-    var activeSource = state.activeDownloads;
-    var activeDepot = state.activeDepotJobs;
+    // Fetch queue from bridge
+    fetch(downloadsQueueUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (seq !== _downloadsPollSeq) return;
+        if (!data || !data.ok) return;
 
-    if (activeSource.length === 0 && activeDepot.length === 0) {
-      cardsHtml = '<div style="text-align:center;padding:24px;color:#8f98a0;">' +
-        '<div style="margin-bottom:8px;font-size:24px;opacity:.3;">' + svgDownload() + '</div>' +
-        '<div style="font-size:13px;">No active downloads</div>' +
-        '<div style="font-size:11px;margin-top:4px;opacity:.6;">Start a download from any game page</div>' +
-        '</div>';
-      listEl.innerHTML = cardsHtml;
-      return;
-    }
+        // Always render history from bridge (even when no active downloads)
+        renderHistory(data.history || []);
 
-    // Source downloads (from extension)
-    for (var i = 0; i < state.activeDownloads.length; i++) {
-      var dl = state.activeDownloads[i];
-      var speeds = computeSpeed(dl.requestId, dl.bytesDownloaded);
-      dl.speed = speeds.speed;
-      var history = getSpeedHistory(dl.requestId);
-      cardsHtml += renderActiveCard({
-        jobId: dl.requestId,
-        gameName: 'App ' + dl.appId,
-        appId: dl.appId,
-        phase: dl.phase || 'Downloading',
-        progress: dl.progress,
-        speed: dl.speed,
-        peak: speeds.peak,
-        bytesDownloaded: dl.bytesDownloaded,
-        totalBytes: dl.totalBytes,
-        history: history,
-        type: 'source',
-        status: 'downloading',
-      });
-    }
-
-    // Depot downloads (from depot modal)
-    for (var j = 0; j < state.activeDepotJobs.length; j++) {
-      var job = state.activeDepotJobs[j];
-      var dSpeeds = computeSpeed(job.jobId, job.bytesDownloaded);
-      job.speed = dSpeeds.speed;
-      var dHistory = getSpeedHistory(job.jobId);
-      cardsHtml += renderActiveCard({
-        jobId: job.jobId,
-        gameName: job.gameName || 'App ' + job.appId,
-        appId: job.appId,
-        phase: job.phase || job.status || 'Downloading',
-        progress: job.progress,
-        speed: job.speed,
-        peak: dSpeeds.peak,
-        bytesDownloaded: job.bytesDownloaded,
-        totalBytes: job.totalBytes,
-        history: dHistory,
-        type: 'depot',
-        status: job.status,
-      });
-    }
-
-    listEl.innerHTML = cardsHtml;
-
-    // Wire up cancel buttons
-    listEl.querySelectorAll('[data-cancel-job]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var jobId = btn.getAttribute('data-cancel-job');
-        var jobType = btn.getAttribute('data-job-type');
-        if (jobType === 'depot' && jobId) {
-          cancelDepotDownload(jobId);
-        } else if (jobType === 'source' && jobId) {
-          cancelSourceDownload(jobId);
+        // Detect completed depot downloads and show restart dialog (only if completed within last 30s)
+        var history = data.history || [];
+        var nowSec = Date.now() / 1000;
+        for (var h of history) {
+          if (h.status === 'completed' && h.appId && !_shownDepotCompletions[h.id]) {
+            var completedAt = h.completedAt || 0;
+            if (nowSec - completedAt < 30) {
+              _shownDepotCompletions[h.id] = true;
+              applyInLibraryState(String(h.appId));
+              showSteamRestartDialog(String(h.appId), h.gameName || 'App ' + h.appId);
+            }
+          }
         }
-      });
-    });
 
-    // Wire up pause buttons
-    listEl.querySelectorAll('[data-pause-job]').forEach(function(btn) {
-      btn.addEventListener('click', function() {
-        var jobId = btn.getAttribute('data-pause-job');
-        var jobType = btn.getAttribute('data-job-type');
-        if (jobType === 'depot' && jobId) {
-          pauseDepotDownload(jobId);
+        var queue = data.queue || [];
+        var cardsHtml = '';
+
+        if (queue.length === 0 && state.activeDownloads.length === 0) {
+          cardsHtml = '<div style="text-align:center;padding:24px;color:#8f98a0;">' +
+            '<div style="margin-bottom:8px;font-size:24px;opacity:.3;">' + svgDownload() + '</div>' +
+            '<div style="font-size:13px;">No active downloads</div>' +
+            '<div style="font-size:11px;margin-top:4px;opacity:.6;">Start a download from any game page</div>' +
+            '</div>';
+          listEl.innerHTML = cardsHtml;
+          return;
         }
-      });
-    });
+
+        // Source downloads (from extension - kept for backwards compat)
+        for (var i = 0; i < state.activeDownloads.length; i++) {
+          var dl = state.activeDownloads[i];
+          var speeds = computeSpeed(dl.requestId, dl.bytesDownloaded);
+          dl.speed = speeds.speed;
+          var speedHist = getSpeedHistory(dl.requestId);
+          cardsHtml += renderActiveCard({
+            jobId: dl.requestId,
+            gameName: 'App ' + dl.appId,
+            appId: dl.appId,
+            phase: dl.phase || 'Downloading',
+            progress: dl.progress,
+            speed: dl.speed,
+            peak: speeds.peak,
+            bytesDownloaded: dl.bytesDownloaded,
+            totalBytes: dl.totalBytes,
+            history: speedHist,
+            type: 'source',
+            status: 'downloading',
+          });
+        }
+
+        // Depot downloads from queue
+        for (var j = 0; j < queue.length; j++) {
+          var item = queue[j];
+          var dSpeeds = computeSpeed(item.id, item.bytesDownloaded);
+          var dHistory = getSpeedHistory(item.id);
+          var position = item.status === 'queued' ? ' (Queued #' + (j + 1) + ')' : '';
+          cardsHtml += renderActiveCard({
+            jobId: item.id,
+            gameName: item.gameName || 'App ' + item.appId,
+            appId: String(item.appId),
+            phase: (item.status === 'downloading' ? 'Downloading' : item.status === 'queued' ? 'Queued' : item.status === 'interrupted' ? 'Interrupted — resuming...' : item.status) + position,
+            progress: item.progress,
+            speed: dSpeeds.speed,
+            peak: dSpeeds.peak,
+            bytesDownloaded: item.bytesDownloaded,
+            totalBytes: item.totalBytes,
+            history: dHistory,
+            type: 'depot',
+            status: item.status,
+          });
+        }
+
+        listEl.innerHTML = cardsHtml;
+
+        // Wire up cancel buttons
+        listEl.querySelectorAll('[data-cancel-job]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var jobId = btn.getAttribute('data-cancel-job');
+            var jobType = btn.getAttribute('data-job-type');
+            if (jobType === 'depot' && jobId) {
+              cancelDepotDownload(jobId);
+            } else if (jobType === 'source' && jobId) {
+              cancelSourceDownload(jobId);
+            }
+          });
+        });
+
+        // Wire up pause buttons
+        listEl.querySelectorAll('[data-pause-job]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var jobId = btn.getAttribute('data-pause-job');
+            var jobType = btn.getAttribute('data-job-type');
+            if (jobType === 'depot' && jobId) {
+              pauseDepotDownload(jobId);
+            }
+          });
+        });
+
+        // Wire up resume buttons
+        listEl.querySelectorAll('[data-resume-job]').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var jobId = btn.getAttribute('data-resume-job');
+            var jobType = btn.getAttribute('data-job-type');
+            if (jobType === 'depot' && jobId) {
+              resumeDepotDownload(jobId);
+            }
+          });
+        });
+      })
+      .catch(function() {});
   }
 
   renderCards();
@@ -479,8 +733,7 @@ function renderDownloadsTab(container: HTMLElement) {
   function pollDownloads() {
     if (seq !== _downloadsPollSeq) return;
     pollSourceDownloads(seq);
-    pollDepotDownloads(seq);
-    renderCards();
+    renderCards(); // Also renders history from bridge
     _downloadsPollTimer = setTimeout(pollDownloads, 1500);
   }
   _downloadsPollTimer = setTimeout(pollDownloads, 1500);
@@ -493,7 +746,7 @@ function renderActiveCard(opts: {
   type: string; status: string;
 }): string {
   var pct = Math.max(0, Math.min(100, opts.progress || 0));
-  var isAnimating = opts.status === 'downloading' || opts.status === 'resolving' || opts.status === 'extracting' || opts.status === 'processing' || opts.status === 'queued';
+  var isAnimating = opts.status === 'downloading' || opts.status === 'resolving' || opts.status === 'extracting' || opts.status === 'processing' || opts.status === 'queued' || opts.status === 'interrupted';
 
   var h = '<div style="position:relative;border-radius:10px;overflow:hidden;margin-bottom:10px;background:linear-gradient(135deg,#1b2838,#0e1721);border:1px solid rgba(102,192,255,.1);min-height:120px;">';
 
@@ -571,7 +824,11 @@ function renderActiveCard(opts: {
   // Controls
   h += '<div style="display:flex;gap:4px;">';
   if (opts.type === 'depot') {
-    h += '<button data-pause-job="' + opts.jobId + '" data-job-type="depot" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" title="Pause">\u23f8</button>';
+    var isPaused = opts.status === 'paused';
+    var btnLabel = isPaused ? '\u25b6' : '\u23f8';
+    var btnTitle = isPaused ? 'Resume' : 'Pause';
+    var btnAction = isPaused ? 'resume-job' : 'pause-job';
+    h += '<button data-' + btnAction + '="' + opts.jobId + '" data-job-type="depot" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" title="' + btnTitle + '">' + btnLabel + '</button>';
   }
   h += '<button data-cancel-job="' + opts.jobId + '" data-job-type="' + opts.type + '" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(231,76,60,.3);background:none;color:#e74c3c;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" title="Cancel">\u2715</button>';
   h += '</div>';
@@ -601,37 +858,18 @@ function pollSourceDownloads(seq: number) {
           if (data.status === 'completed' || data.status === 'failed') {
             clearSpeedSamples(download.requestId);
             state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== download.requestId; });
+            // Source download history tracked in-memory (not in bridge queue)
+            state.downloadHistory.unshift({
+              id: download.requestId, appId: download.appId, gameName: download.gameName,
+              type: 'source', status: data.status, timestamp: Date.now(),
+              progress: data.progress || 100, bytesDownloaded: data.bytesRead || data.bytesDownloaded || 0, totalBytes: data.totalBytes || 0,
+            });
+            if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
+            saveSessionState();
           }
         })
         .catch(function() {});
     })(dl);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Poll depot downloads
-// ---------------------------------------------------------------------------
-function pollDepotDownloads(seq: number) {
-  for (var i = 0; i < state.activeDepotJobs.length; i++) {
-    var job = state.activeDepotJobs[i];
-    (function(download) {
-      fetch(bridgeUrl('/api/depot-download-status/' + download.jobId), { method: 'GET', mode: 'cors', cache: 'no-store' })
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-          if (_downloadsPollSeq !== seq) return;
-          if (!data || !data.ok) return;
-          download.phase = data.phase || data.message || data.status || '';
-          download.progress = data.progress || 0;
-          download.bytesDownloaded = data.bytesRead || data.bytesDownloaded || 0;
-          download.totalBytes = data.totalBytes || 0;
-          download.status = data.status || 'downloading';
-          if (data.status === 'completed' || data.status === 'failed') {
-            clearSpeedSamples(download.jobId);
-            state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== download.jobId; });
-          }
-        })
-        .catch(function() {});
-    })(job);
   }
 }
 
@@ -647,14 +885,26 @@ function stopDownloadsPoll() {
 // Cancel / Pause depot download
 // ---------------------------------------------------------------------------
 function cancelDepotDownload(jobId: string) {
-  fetch(bridgeUrl('/api/depot-download-cancel/' + jobId), { method: 'POST', mode: 'cors', cache: 'no-store' })
+  fetch(downloadsQueueRemoveUrl(jobId), { method: 'POST', mode: 'cors', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function() {
-      state.activeDepotJobs = state.activeDepotJobs.filter(function(j) { return j.jobId !== jobId; });
       clearSpeedSamples(jobId);
       renderDownloadsTab(document.querySelector('.luma-sidebar-content') as HTMLElement);
     })
     .catch(function() {});
+}
+
+// ---------------------------------------------------------------------------
+// Resume download from history
+// ---------------------------------------------------------------------------
+function resumeFromHistory(idx: number, type: string, appId: string) {
+  if (type === 'depot') {
+    closeSidebar();
+    openDepotModal(appId);
+  } else {
+    closeSidebar();
+    openSourceModal(appId);
+  }
 }
 
 function cancelSourceDownload(requestId: string) {
@@ -664,8 +914,14 @@ function cancelSourceDownload(requestId: string) {
   renderDownloadsTab(document.querySelector('.luma-sidebar-content') as HTMLElement);
 }
 
-function pauseDepotDownload(jobId: string) {
-  fetch(bridgeUrl('/api/depot-download-pause/' + jobId), { method: 'POST', mode: 'cors', cache: 'no-store' })
+function pauseDepotDownload(queueId: string) {
+  fetch(bridgeUrl('/api/downloads-queue/pause/' + queueId), { method: 'POST', mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .catch(function() {});
+}
+
+function resumeDepotDownload(queueId: string) {
+  fetch(bridgeUrl('/api/downloads-queue/resume/' + queueId), { method: 'POST', mode: 'cors', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .catch(function() {});
 }
@@ -740,6 +996,19 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function formatTimeAgo(timestamp: number): string {
+  // Rust returns seconds, Date.now() returns milliseconds
+  var tsMs = timestamp < 1e12 ? timestamp * 1000 : timestamp;
+  var diff = Date.now() - tsMs;
+  var mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  var hours = Math.floor(mins / 60);
+  if (hours < 24) return hours + 'h ago';
+  var days = Math.floor(hours / 24);
+  return days + 'd ago';
+}
+
 // ---------------------------------------------------------------------------
 // Open sidebar
 // ---------------------------------------------------------------------------
@@ -747,7 +1016,12 @@ export function openSidebar(initialTab?: string) {
   if (document.getElementById(SIDEBAR_ID)) return;
   ensureKeyframes();
 
-  if (initialTab) currentTab = initialTab;
+  if (initialTab) state.currentTab = initialTab;
+  state.sidebarOpen = true;
+  saveSessionState();
+  // Hide floating settings button while sidebar is open
+  var settingsBtn = document.getElementById('luma-ssh-settings-btn') as HTMLElement | null;
+  if (settingsBtn) settingsBtn.style.display = 'none';
 
   var backdrop = document.createElement('div');
   backdrop.id = BACKDROP_ID;
@@ -772,7 +1046,7 @@ export function openSidebar(initialTab?: string) {
   var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;">';
   for (var i = 0; i < TABS.length; i++) {
     var tab = TABS[i];
-    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1;padding:10px 4px;text-align:center;font-size:11px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
+    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1;padding:10px 4px;text-align:center;font-size:11px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
   }
   tabsHtml += '</div>';
 
@@ -806,5 +1080,5 @@ export function openSidebar(initialTab?: string) {
     }
   });
 
-  renderTabContent(currentTab);
+  renderTabContent(state.currentTab);
 }

@@ -1,12 +1,12 @@
-import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, BTN_APPID_ATTR } from '../core/state';
+import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
 import { abortPendingRequests, cancelAllRetries, removeButton, syncNamespaceState, ensureLumaButtonExists, setButtonState, setButtonLumaState, checkLocalStatus, handleLocalStatusResult } from '../ui/button';
 import { ST } from '../ui/styles';
 import { svgSpinner } from '../ui/svg';
 import { ensureSettingsButton } from '../modals/settings';
 import { closeModal, openSourceModal, stopDownloadPoll } from '../modals/source';
 import { openDepotModal } from '../modals/depot';
-import { stopObserver, restoreHistory, patchHistory, reconcile, scheduleReconcile, startObserver } from './spa';
-import { detectBridgePort, extractAppId } from '../ui/helpers';
+import { stopObserver, restoreHistory, patchHistory, reconcile, startObserver } from './spa';
+import { detectBridgePort, extractAppId, bridgeUrl } from '../ui/helpers';
 
 // ---------------------------------------------------------------------------
 // Teardown
@@ -15,12 +15,15 @@ export function teardown(): void {
   try {
     console.log('[LUMA_WATCHER] Tearing down lifecycle');
     state.activated = false;
-    abortPendingRequests();
-    cancelAllRetries();
-    stopDownloadPoll();
+
+    // Queue is managed by bridge — no need to move downloads to history here
     state.activeDownloads = [];
     state.activeDepotJobs = [];
     state.installingAppIds = {};
+    saveSessionState();
+    abortPendingRequests();
+    cancelAllRetries();
+    stopDownloadPoll();
     if (state.providerAbortController) {
       state.providerAbortController.abort();
       state.providerAbortController = null;
@@ -47,6 +50,7 @@ export function activate(): void {
       return;
     }
     state.activated = true;
+    loadSessionState();
     state.currentUrl = location.href;
     state.currentAppId = extractAppId();
     patchHistory();
@@ -56,6 +60,8 @@ export function activate(): void {
     ensureSettingsButton();
     detectBridgePort();
     syncNamespaceState();
+    // Auto-start next queued download on activation
+    fetch(bridgeUrl('/api/downloads-queue/start-next'), { method: 'POST', mode: 'cors', cache: 'no-store' }).catch(function() {});
     console.log('[LUMA_RUNTIME] Version:', LUMA_INJECT_VERSION);
     console.log('[LUMA_RUNTIME] Target URL:', window.location.href);
     console.log('[LUMA_RUNTIME] Document ID:', state.documentId);
@@ -126,9 +132,9 @@ function setupEventDelegation(): void {
           }
           if (btn.getAttribute('aria-disabled') === 'true') return;
           var btnText = btn.textContent || '';
-          if (btnText.indexOf('IN LIBRARY') !== -1) {
+          if (btnText.indexOf('INSTALL') !== -1 || btnText.indexOf('IN LIBRARY') !== -1) {
             if (IS_LINUX) {
-              console.log('[LUMA_INJECT] IN LIBRARY click on Linux → opening depot modal for AppID:', btnAppId);
+              console.log('[LUMA_INJECT] INSTALL click on Linux → opening depot modal for AppID:', btnAppId);
               openDepotModal(btnAppId);
             }
             return;

@@ -1,4 +1,4 @@
-import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION, IS_LINUX } from '../core/state';
+import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION, IS_LINUX, saveSessionState } from '../core/state';
 import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svgBox, svgErrorCircle, svgLibrary } from '../ui/svg';
 import { ST, dot } from '../ui/styles';
 import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc } from '../ui/helpers';
@@ -783,6 +783,7 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
           bytesDownloaded: 0,
           totalBytes: 0,
         });
+        saveSessionState();
 
         if (badge) {
           badge.setAttribute('style', ST.badgeAvail);
@@ -898,13 +899,29 @@ export function startDownloadPoll(requestId: string, appId: string): void {
 
         if (d.status === 'completed') {
           state.requestContext = null;
+          var completedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          state.downloadHistory.unshift({
+            id: requestId, appId: appId, gameName: completedDl ? completedDl.gameName : undefined,
+            type: 'source', status: 'completed', timestamp: Date.now(),
+            progress: 100, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
+          });
+          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
+          saveSessionState();
           showDownloadSuccess(appId, requestId);
           return;
         }
         if (d.status === 'failed') {
           state.requestContext = null;
+          var failedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          state.downloadHistory.unshift({
+            id: requestId, appId: appId, gameName: failedDl ? failedDl.gameName : undefined,
+            type: 'source', status: 'failed', timestamp: Date.now(),
+            progress: d.progress || 0, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
+          });
+          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
+          saveSessionState();
           showDownloadError(appId, d.message || 'Download failed', d.errorCode);
           return;
         }
@@ -927,6 +944,71 @@ export function stopDownloadPoll(): void {
     clearTimeout(state.downloadPollTimer);
     state.downloadPollTimer = null;
   }
+}
+
+export function restartDownloadPoll(requestId: string, appId: string): void {
+  state.downloadPollSeq++;
+  var seq = state.downloadPollSeq;
+  state.requestContext = { requestId: requestId, appId: appId, sourceId: '' };
+
+  function poll() {
+    if (state.downloadPollSeq !== seq) return;
+
+    fetch(downloadStatusUrl(requestId), {
+      method: 'GET', mode: 'cors', cache: 'no-store',
+    })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        if (state.downloadPollSeq !== seq) return;
+        if (!d || !d.ok) throw new Error((d && d.message) || 'Invalid response');
+
+        for (var i = 0; i < state.activeDownloads.length; i++) {
+          if (state.activeDownloads[i].requestId === requestId) {
+            state.activeDownloads[i].phase = d.message || d.status || '';
+            state.activeDownloads[i].progress = d.progress || 0;
+            state.activeDownloads[i].speed = d.speed || 0;
+            state.activeDownloads[i].bytesDownloaded = d.bytesDownloaded || 0;
+            state.activeDownloads[i].totalBytes = d.totalBytes || 0;
+            break;
+          }
+        }
+
+        if (d.status === 'completed') {
+          state.requestContext = null;
+          var completedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
+          state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          state.downloadHistory.unshift({
+            id: requestId, appId: appId, gameName: completedDl ? completedDl.gameName : undefined,
+            type: 'source', status: 'completed', timestamp: Date.now(),
+            progress: 100, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
+          });
+          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
+          saveSessionState();
+          return;
+        }
+        if (d.status === 'failed') {
+          state.requestContext = null;
+          var failedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
+          state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          state.downloadHistory.unshift({
+            id: requestId, appId: appId, gameName: failedDl ? failedDl.gameName : undefined,
+            type: 'source', status: 'failed', timestamp: Date.now(),
+            progress: d.progress || 0, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
+          });
+          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
+          saveSessionState();
+          return;
+        }
+
+        state.downloadPollTimer = setTimeout(poll, 1500);
+      })
+      .catch(function () {
+        if (state.downloadPollSeq !== seq) return;
+        state.downloadPollTimer = setTimeout(poll, 2500);
+      });
+  }
+
+  state.downloadPollTimer = setTimeout(poll, 800);
 }
 
 // ---------------------------------------------------------------------------

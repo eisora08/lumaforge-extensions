@@ -110,6 +110,21 @@ interface State {
     jobId: string | null;
     gameName?: string;
   } | null;
+
+  // Session-persisted fields (survive page navigations via sessionStorage)
+  currentTab: string;
+  sidebarOpen: boolean;
+  downloadHistory: Array<{
+    id: string;
+    appId: string;
+    gameName?: string;
+    type: 'source' | 'depot';
+    status: 'completed' | 'failed' | 'cancelled';
+    timestamp: number;
+    progress: number;
+    bytesDownloaded: number;
+    totalBytes: number;
+  }>;
 }
 
 var state: State = {
@@ -145,6 +160,11 @@ var state: State = {
   savedFocusElement: null,
   installingAppIds: {},
   depotModalState: null,
+
+  // Session-persisted defaults
+  currentTab: 'downloads',
+  sidebarOpen: false,
+  downloadHistory: [],
 };
 
 // ---------------------------------------------------------------------------
@@ -152,6 +172,38 @@ var state: State = {
 // ---------------------------------------------------------------------------
 var IS_LINUX = typeof navigator !== 'undefined' &&
                navigator.platform.toLowerCase().indexOf('linux') !== -1;
+
+// ---------------------------------------------------------------------------
+// Persistent state (survives page navigations AND Steam restarts)
+// ---------------------------------------------------------------------------
+var SESSION_KEY = '__lumaforge_ssh_session__';
+
+export function saveSessionState(): void {
+  try {
+    var snapshot = {
+      currentTab: state.currentTab,
+      sidebarOpen: state.sidebarOpen,
+      downloadHistory: state.downloadHistory,
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(snapshot));
+  } catch (_) {}
+}
+
+export function loadSessionState(): void {
+  try {
+    var raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return;
+    var snapshot = JSON.parse(raw);
+    if (snapshot.currentTab) state.currentTab = snapshot.currentTab;
+    if (typeof snapshot.sidebarOpen === 'boolean') state.sidebarOpen = snapshot.sidebarOpen;
+    // NOTE: activeDownloads, activeDepotJobs, installingAppIds are NOT restored.
+    // Downloads moved to downloadHistory (as "paused") during teardown().
+    // User must click Resume to restart them.
+    if (snapshot.downloadHistory && Array.isArray(snapshot.downloadHistory)) {
+      state.downloadHistory = snapshot.downloadHistory;
+    }
+  } catch (_) {}
+}
 
 export {
   LUMA_INJECT_VERSION,

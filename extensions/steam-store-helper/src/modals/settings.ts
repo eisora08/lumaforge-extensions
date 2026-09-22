@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, NAMESPACE } from '../core/state';
 import { svgGear, svgX, svgSpinner, svgErrorCircle, svgDownload } from '../ui/svg';
 import { ST } from '../ui/styles';
-import { esc, bridgeUrl } from '../ui/helpers';
+import { esc, bridgeUrl, downloadsQueueUrl } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
 import { closeModal } from './source';
 import { openSidebar } from '../sidebar/SidebarPanel';
@@ -61,27 +61,35 @@ function startSettingsBtnTimer(): void {
     var btn = document.getElementById(SETTINGS_BTN_ID) as HTMLElement | null;
     if (!btn) { stopSettingsBtnTimer(); return; }
 
-    var hasDownloads = state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0;
+    // Check bridge queue for active downloads
+    fetch(downloadsQueueUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data || !data.ok) return;
+        var queueActive = (data.queue || []).length > 0;
+        var hasDownloads = queueActive || state.activeDownloads.length > 0;
 
-    if (hasDownloads !== _settingsBtnHasDownloads) {
-      _settingsBtnHasDownloads = hasDownloads;
-      if (hasDownloads) {
-        btn.innerHTML = svgDownload();
-        btn.title = 'LumaForge \u2014 Active Downloads';
-        btn.style.background = 'rgba(102,192,255,.15)';
-        btn.style.color = '#66c0ff';
-        btn.style.borderColor = 'rgba(102,192,255,.3)';
-        btn.style.animation = 'luma_ssh_download_pulse 2s ease-in-out infinite, luma_ssh_download_glow 2s ease-in-out infinite';
-      } else {
-        btn.innerHTML = svgGear();
-        btn.title = 'LumaForge';
-        btn.style.background = 'rgba(30,30,40,.85)';
-        btn.style.color = 'rgba(255,255,255,.6)';
-        btn.style.borderColor = 'rgba(255,255,255,.15)';
-        btn.style.animation = 'none';
-      }
-    }
-  }, 1000);
+        if (hasDownloads !== _settingsBtnHasDownloads) {
+          _settingsBtnHasDownloads = hasDownloads;
+          if (hasDownloads) {
+            btn.innerHTML = svgDownload();
+            btn.title = 'LumaForge \u2014 Active Downloads';
+            btn.style.background = 'rgba(102,192,255,.15)';
+            btn.style.color = '#66c0ff';
+            btn.style.borderColor = 'rgba(102,192,255,.3)';
+            btn.style.animation = 'luma_ssh_download_pulse 2s ease-in-out infinite, luma_ssh_download_glow 2s ease-in-out infinite';
+          } else {
+            btn.innerHTML = svgGear();
+            btn.title = 'LumaForge';
+            btn.style.background = 'rgba(30,30,40,.85)';
+            btn.style.color = 'rgba(255,255,255,.6)';
+            btn.style.borderColor = 'rgba(255,255,255,.15)';
+            btn.style.animation = 'none';
+          }
+        }
+      })
+      .catch(function() {});
+  }, 2000);
 }
 
 function stopSettingsBtnTimer(): void {
