@@ -1,7 +1,7 @@
 import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION, IS_LINUX, saveSessionState } from '../core/state';
 import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svgBox, svgErrorCircle, svgLibrary } from '../ui/svg';
 import { ST, dot } from '../ui/styles';
-import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc } from '../ui/helpers';
+import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, steamKeysSettingsUrl } from '../ui/helpers';
 import { bridgeFetch } from '../api/bridge';
 import { setButtonState, setButtonLumaState } from '../ui/button';
 import { openDepotModal } from './depot';
@@ -124,6 +124,12 @@ export function openSourceModal(appId: string): void {
 
     var footer = document.createElement('div');
     footer.setAttribute('style', ST.footer);
+    var autofetchWrap = document.createElement('label');
+    autofetchWrap.id = 'luma-sk-autofetch-wrap';
+    autofetchWrap.setAttribute('style', 'display:none;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.7);user-select:none;');
+    autofetchWrap.innerHTML =
+      '<input type="checkbox" id="luma-sk-autofetch" style="accent-color:#1b6cfg;cursor:pointer;">' +
+      '<span>Auto-fetch manifests after generating</span>';
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
     footerNote.textContent = 'Packages are installed through LumaForge';
@@ -132,8 +138,10 @@ export function openSourceModal(appId: string): void {
     cancelBtn.setAttribute('style', ST.cancelBtn);
     cancelBtn.textContent = 'Cancel';
     cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(autofetchWrap);
     footer.appendChild(footerNote);
     footer.appendChild(cancelBtn);
+    footer.setAttribute('style', ST.footer + ';justify-content:space-between;');
 
     panel.appendChild(header);
     panel.appendChild(body);
@@ -224,6 +232,28 @@ export function openSourceModal(appId: string): void {
               data.message || null,
               providerStats || null
             );
+            var hasSteamKeys = sources.some(function (s: any) { return s && s.id === 'steamkeys'; });
+            if (hasSteamKeys) {
+              var wrap = document.getElementById('luma-sk-autofetch-wrap');
+              var cb = document.getElementById('luma-sk-autofetch') as HTMLInputElement | null;
+              if (wrap && cb) {
+                wrap.style.display = 'flex';
+                fetch(steamKeysSettingsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+                  .then(function (r) { return r.ok ? r.json() : null; })
+                  .then(function (d2) {
+                    cb.checked = !!(d2 && d2.ok && d2.autoFetch);
+                  })
+                  .catch(function () { cb.checked = true; });
+                cb.addEventListener('change', function () {
+                  fetch(steamKeysSettingsUrl(), {
+                    method: 'POST',
+                    mode: 'cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ autoFetch: cb.checked }),
+                  }).catch(function () { });
+                });
+              }
+            }
             if (
               state.providerAbortController ===
               providerController

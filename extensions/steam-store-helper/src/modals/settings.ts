@@ -239,7 +239,7 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
     var urlId = 'luma-setting-url-' + i;
     var testStatusId = 'luma-setting-test-' + i;
 
-    html += '<div data-provider-row data-provider-id="' + esc(p.id) + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;">';
+    html += '<div data-provider-row data-provider-id="' + esc(p.id) + '" data-provider-name="' + esc(p.name || '') + '" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px;">';
     html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">';
     html += '<div style="display:flex;align-items:center;gap:8px;">';
     html += '<label style="position:relative;display:inline-block;width:36px;height:20px;cursor:pointer;">';
@@ -257,11 +257,15 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
     html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">URL</label>';
     html += '<input id="' + urlId + '" data-provider-url type="text" value="' + esc(p.baseUrl || '') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
     html += '</div>';
-    html += '<div style="display:flex;align-items:center;gap:6px;">';
-    html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">API Key</label>';
-    html += '<input id="' + keyId + '" data-provider-key type="password" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'No key set') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
-    html += '<button data-test-btn type="button" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:5px 10px;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer;white-space:nowrap;">Test</button>';
-    html += '</div>';
+    if (p.id === 'steamkeys') {
+      html += '<div style="font-size:11px;color:#64c882;">No API key required \u2014 local provider (lua generation + manifest fetch)</div>';
+    } else {
+      html += '<div style="display:flex;align-items:center;gap:6px;">';
+      html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">API Key</label>';
+      html += '<input id="' + keyId + '" data-provider-key type="password" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'No key set') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
+      html += '<button data-test-btn type="button" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:5px 10px;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer;white-space:nowrap;">Test</button>';
+      html += '</div>';
+    }
     html += '</div>';
     html += '</div>';
   }
@@ -344,12 +348,13 @@ export function saveSettings(container: HTMLElement): void {
     var id = row.getAttribute('data-provider-id');
     var enabled = (row.querySelector('[data-provider-enabled]') as HTMLInputElement).checked;
     var baseUrl = (row.querySelector('[data-provider-url]') as HTMLInputElement).value;
-    var keyInput = row.querySelector('[data-provider-key]') as HTMLInputElement;
-    var apiKey = keyInput.value || undefined;
+    var keyInput = row.querySelector('[data-provider-key]') as HTMLInputElement | null;
+    var apiKey = keyInput && keyInput.value ? keyInput.value : undefined;
+    var nameAttr = row.getAttribute('data-provider-name');
 
     providers.push({
       id: id,
-      name: id!.charAt(0).toUpperCase() + id!.slice(1),
+      name: nameAttr || (id!.charAt(0).toUpperCase() + id!.slice(1)),
       enabled: enabled,
       baseUrl: baseUrl,
       apiKey: apiKey

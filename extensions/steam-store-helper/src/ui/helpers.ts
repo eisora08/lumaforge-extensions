@@ -206,6 +206,22 @@ export function downloadStatusUrl(requestId: string): string {
   return bridgeUrl('/api/download-status/' + requestId);
 }
 
+export function steamKeysPinsUrl(): string {
+  return bridgeUrl('/api/steam-keys/pins');
+}
+
+export function steamKeysPinUrl(): string {
+  return bridgeUrl('/api/steam-keys/pin');
+}
+
+export function steamKeysUnpinUrl(): string {
+  return bridgeUrl('/api/steam-keys/unpin');
+}
+
+export function steamKeysSettingsUrl(): string {
+  return bridgeUrl('/api/steam-keys/settings');
+}
+
 export function openLibraryUrl(appId: string): string {
   return bridgeUrl('/api/open-library/' + appId);
 }

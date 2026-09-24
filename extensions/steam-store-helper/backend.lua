@@ -84,6 +84,11 @@ local function load_providers()
 end
 
 local function check_provider_available(provider, app_id)
+    -- Steam Keys is a local provider (lua generation + GitHub fetch): always available
+    if provider.id == "steamkeys" then
+        return true, nil, 200
+    end
+
     local adapter = provider.adapter or generic_adapter
     local check_url, _, headers = adapter(provider.base_url, provider.api_key, app_id)
 
@@ -215,12 +220,16 @@ local function handle_sources(app_id)
     local apis = load_providers()
     local sources = {}
     local unavailable = {}
+    local has_steamkeys = false
 
     for _, api in ipairs(apis) do
         if api.enabled then
             local avail, url, status = check_provider_available(api, app_id)
             local detail_msg
-            if avail then
+            if api.id == "steamkeys" then
+                has_steamkeys = true
+                detail_msg = "Generate .lua \226\128\148 Pin \226\128\148 Fetch"
+            elseif avail then
                 detail_msg = "Package available"
             elseif status == 0 then
                 detail_msg = "Provider unreachable"
@@ -245,6 +254,18 @@ local function handle_sources(app_id)
                 table.insert(unavailable, source)
             end
         end
+    end
+
+    -- Steam Keys is always available even if missing from config
+    if not has_steamkeys then
+        table.insert(sources, 1, {
+            id = "steamkeys",
+            name = "Steam Keys",
+            available = true,
+            selectable = true,
+            detail = "Generate .lua \226\128\148 Pin \226\128\148 Fetch",
+            total = 0
+        })
     end
 
     return {
@@ -533,6 +554,18 @@ routes["POST /api/settings/test-key"] = function(req)
     local provider_id = body.providerId
     local base_url = body.baseUrl
     local api_key = body.apiKey
+
+    -- Steam Keys requires no API key: report success without any HTTP request
+    if provider_id == "steamkeys" then
+        return {
+            status = 200,
+            body = json_encode({
+                ok = true,
+                message = "No API key required (local provider)"
+            }),
+            contentType = "application/json"
+        }
+    end
 
     if not base_url or base_url == "" then
         return {

@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
 import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
-import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi } from '../ui/helpers';
+import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
 import { openDepotModal, restartSteam } from '../modals/depot';
@@ -250,7 +250,21 @@ function renderDashboardTab(container: HTMLElement) {
     })
     .catch(function() {});
 
-  // Fetch Lua files
+  // Fetch Lua files + pin/installed state
+  loadLuaCards();
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard: Lua cards with Installed/Pinned badges + pin mini-menu
+// ---------------------------------------------------------------------------
+function loadLuaCards(): void {
+  fetch(steamKeysPinsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(pd) { renderLuaCards(pd && pd.ok && pd.pins ? pd.pins : {}); })
+    .catch(function() { renderLuaCards({}); });
+}
+
+function renderLuaCards(pins: any): void {
   fetch(luaFilesUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
@@ -264,18 +278,99 @@ function renderDashboardTab(container: HTMLElement) {
       var h = '';
       for (var i = 0; i < data.files.length; i++) {
         var f = data.files[i];
+        var pin = pins[f.appId] || null;
+        var installed = !!(pin && pin.installed);
+        var hasPins = !!(pin && pin.hasPins);
+        var badges = '';
+        if (installed) badges += ' \u00b7 <span style="color:#64c882;">Installed</span>';
+        if (hasPins) badges += ' \u00b7 <span style="color:#f0ad4e;">Pinned</span>';
+
         h += '<div class="luma-stat-card" data-lua-appid="' + esc(f.appId) + '" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
         h += '<div class="luma-stat-icon blue">' + svgBox() + '</div>';
         h += '<div style="flex:1;min-width:0;">';
         h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
-        h += '<div style="font-size:10px;color:#8f98a0;">ID: ' + esc(f.appId) + ' · ' + esc(f.filename) + '</div>';
+        h += '<div style="font-size:10px;color:#8f98a0;">ID: ' + esc(f.appId) + ' \u00b7 ' + esc(f.filename) + badges + '</div>';
         h += '</div>';
-        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="Remove Lua script" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 8px;color:#e74c3c;font-size:10px;cursor:pointer;white-space:flex-shrink:0;">Remove</button>';
+        h += '<div style="position:relative;flex-shrink:0;">';
+        h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="Manifest pins" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">\u{1F4CC}</button>';
+        h += '<div class="luma-lua-pin-menu" data-lua-pin-menu="' + esc(f.appId) + '" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;background:#1b2838;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);text-align:left;">';
+        h += '<button data-lua-pin-action="current" data-app="' + esc(f.appId) + '" style="display:' + (installed ? 'block' : 'none') + ';width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u{1F4CC} Pin to Current Version</button>';
+        h += '<button data-lua-pin-action="latest" data-app="' + esc(f.appId) + '" style="display:block;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u{1F4CC} Pin to Latest Version</button>';
+        h += '<button data-lua-pin-action="unpin" data-app="' + esc(f.appId) + '" style="display:' + (hasPins ? 'block' : 'none') + ';width:100%;text-align:left;background:none;border:none;color:#e74c3c;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u26D4 Unpin</button>';
+        h += '</div>';
+        h += '</div>';
+        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="Remove Lua script" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 7px;color:#e74c3c;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;">\u{1F5D1}\u{FE0F}</button>';
         h += '</div>';
       }
       luaContainer.innerHTML = h;
 
-      // Wire up delete buttons
+      // Close menus when clicking outside a menu
+      luaContainer.addEventListener('click', function(ev) {
+        var t = ev.target as HTMLElement;
+        if (t.closest && t.closest('[data-lua-pin-menu],[data-lua-pin-toggle]')) return;
+        var openMenus = luaContainer.querySelectorAll('[data-lua-pin-menu]');
+        for (var m = 0; m < openMenus.length; m++) {
+          (openMenus[m] as HTMLElement).style.display = 'none';
+        }
+      });
+
+      // Pin toggle buttons
+      var pinToggles = luaContainer.querySelectorAll('[data-lua-pin-toggle]');
+      for (var t = 0; t < pinToggles.length; t++) {
+        (function(btn: Element) {
+          btn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            var appId = btn.getAttribute('data-lua-pin-toggle');
+            var menu = luaContainer.querySelector('[data-lua-pin-menu="' + appId + '"]') as HTMLElement;
+            if (!menu) return;
+            var isOpen = menu.style.display !== 'none';
+            var allMenus = luaContainer.querySelectorAll('[data-lua-pin-menu]');
+            for (var m = 0; m < allMenus.length; m++) {
+              (allMenus[m] as HTMLElement).style.display = 'none';
+            }
+            menu.style.display = isOpen ? 'none' : 'block';
+          });
+        })(pinToggles[t]);
+      }
+
+      // Pin/unpin actions
+      var pinActions = luaContainer.querySelectorAll('[data-lua-pin-action]');
+      for (var a = 0; a < pinActions.length; a++) {
+        (function(btn: Element) {
+          btn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            var action = btn.getAttribute('data-lua-pin-action');
+            var appId = btn.getAttribute('data-app');
+            if (!appId || !action) return;
+            var menu = luaContainer.querySelector('[data-lua-pin-menu="' + appId + '"]') as HTMLElement;
+            if (menu) menu.style.display = 'none';
+
+            var url = action === 'unpin' ? steamKeysUnpinUrl() : steamKeysPinUrl();
+            var payload = action === 'unpin'
+              ? { appId: appId }
+              : { appId: appId, mode: action };
+            (btn as HTMLButtonElement).disabled = true;
+
+            fetch(url, {
+              method: 'POST',
+              mode: 'cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            })
+              .then(function(r) { return r.json(); })
+              .then(function(res) {
+                if (res && res.ok) loadLuaCards();
+                else {
+                  (btn as HTMLButtonElement).disabled = false;
+                  console.warn('[LUMA_INJECT] Pin op failed:', res && res.message);
+                }
+              })
+              .catch(function() { (btn as HTMLButtonElement).disabled = false; });
+          });
+        })(pinActions[a]);
+      }
+
+      // Delete buttons (icon-only)
       var deleteBtns = luaContainer.querySelectorAll('[data-lua-delete]');
       for (var j = 0; j < deleteBtns.length; j++) {
         (function(btn: Element) {
@@ -283,7 +378,7 @@ function renderDashboardTab(container: HTMLElement) {
             var appId = btn.getAttribute('data-lua-delete');
             if (!appId) return;
             var card = luaContainer.querySelector('[data-lua-appid="' + appId + '"]');
-            (btn as HTMLButtonElement).textContent = '...';
+            (btn as HTMLButtonElement).textContent = '\u2026';
             (btn as HTMLButtonElement).disabled = true;
 
             fetch(luaFileDeleteUrl(appId), { method: 'DELETE', mode: 'cors', cache: 'no-store' })
@@ -295,12 +390,12 @@ function renderDashboardTab(container: HTMLElement) {
                   (card as HTMLElement).style.transform = 'translateX(20px)';
                   setTimeout(function() { card.remove(); }, 300);
                 } else {
-                  (btn as HTMLButtonElement).textContent = 'Remove';
+                  (btn as HTMLButtonElement).textContent = '\u{1F5D1}\u{FE0F}';
                   (btn as HTMLButtonElement).disabled = false;
                 }
               })
               .catch(function() {
-                (btn as HTMLButtonElement).textContent = 'Remove';
+                (btn as HTMLButtonElement).textContent = '\u{1F5D1}\u{FE0F}';
                 (btn as HTMLButtonElement).disabled = false;
               });
           });
@@ -334,7 +429,7 @@ function renderProvidersTab(container: HTMLElement) {
       h += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Providers (' + providers.length + ')</div>';
       for (var i = 0; i < providers.length; i++) {
         var p = providers[i];
-        h += '<div class="luma-provider-row" data-provider-idx="' + i + '" data-provider-id="' + esc(p.id) + '" style="flex-direction:column;align-items:stretch;gap:8px;">';
+        h += '<div class="luma-provider-row" data-provider-idx="' + i + '" data-provider-id="' + esc(p.id) + '" data-provider-name="' + esc(p.name || '') + '" style="flex-direction:column;align-items:stretch;gap:8px;">';
 
         // Row 1: name + toggle
         h += '<div style="display:flex;align-items:center;justify-content:space-between;">';
@@ -342,7 +437,7 @@ function renderProvidersTab(container: HTMLElement) {
         h += '<button class="luma-toggle' + (p.enabled ? ' on' : '') + '" data-toggle="' + i + '"></button>';
         h += '<div style="min-width:0;">';
         h += '<div style="font-size:13px;font-weight:600;color:#fff;">' + esc(p.name) + '</div>';
-        h += '<div style="font-size:10px;color:#8f98a0;">' + (p.hasKey ? 'API key configured' : 'No API key') + '</div>';
+        h += '<div style="font-size:10px;color:#8f98a0;">' + (p.id === 'steamkeys' ? 'Local provider (no API key)' : (p.hasKey ? 'API key configured' : 'No API key')) + '</div>';
         h += '</div></div>';
         h += '<span class="luma-provider-test-status" data-test-status="' + i + '" style="font-size:10px;color:#8f98a0;"></span>';
         h += '</div>';
@@ -353,19 +448,21 @@ function renderProvidersTab(container: HTMLElement) {
         h += '<input type="text" data-provider-url="' + i + '" value="' + esc(p.baseUrl || '') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
         h += '</div>';
 
-        // Row 3: API Key + Test + Get Key link
-        h += '<div style="display:flex;align-items:center;gap:6px;">';
-        h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">Key</label>';
-        h += '<input type="password" data-provider-key="' + i + '" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'Enter API key') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
-        h += '<button class="luma-sidebar-btn secondary" data-test-btn="' + i + '" style="padding:4px 8px;font-size:10px;">Test</button>';
-        h += '</div>';
-
-        // Get API Key link
-        var keyUrl = getKeyUrl(p.id);
-        if (keyUrl) {
-          h += '<div style="text-align:right;">';
-          h += '<a href="' + keyUrl + '" target="_blank" rel="noopener" style="font-size:10px;color:#66c0ff;text-decoration:none;">Get API Key \u2197</a>';
+        if (p.id !== 'steamkeys') {
+          // Row 3: API Key + Test + Get Key link
+          h += '<div style="display:flex;align-items:center;gap:6px;">';
+          h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">Key</label>';
+          h += '<input type="password" data-provider-key="' + i + '" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'Enter API key') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
+          h += '<button class="luma-sidebar-btn secondary" data-test-btn="' + i + '" style="padding:4px 8px;font-size:10px;">Test</button>';
           h += '</div>';
+
+          // Get API Key link
+          var keyUrl = getKeyUrl(p.id);
+          if (keyUrl) {
+            h += '<div style="text-align:right;">';
+            h += '<a href="' + keyUrl + '" target="_blank" rel="noopener" style="font-size:10px;color:#66c0ff;text-decoration:none;">Get API Key \u2197</a>';
+            h += '</div>';
+          }
         }
 
         h += '</div>';
@@ -477,11 +574,12 @@ function saveProviders(container: HTMLElement) {
     var toggle = row.querySelector('[data-toggle]') as HTMLElement;
     var enabled = toggle ? toggle.classList.contains('on') : false;
     var urlInput = row.querySelector('[data-provider-url]') as HTMLInputElement;
-    var keyInput = row.querySelector('[data-provider-key]') as HTMLInputElement;
+    var keyInput = row.querySelector('[data-provider-key]') as HTMLInputElement | null;
+    var nameAttr = row.getAttribute('data-provider-name');
 
     providers.push({
       id: id,
-      name: id!.charAt(0).toUpperCase() + id!.slice(1),
+      name: nameAttr || (id!.charAt(0).toUpperCase() + id!.slice(1)),
       enabled: enabled,
       baseUrl: urlInput ? urlInput.value : '',
       apiKey: keyInput && keyInput.value ? keyInput.value : undefined
@@ -1307,6 +1405,16 @@ function renderSettingsTab(container: HTMLElement) {
   html += '</div>';
   html += '</div></div>';
 
+  // ── Steam Keys ──
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Steam Keys</div>';
+  html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:8px;">Manifest pinning for generated Lua scripts</div>';
+  html += '<div style="display:flex;gap:8px;align-items:center;">';
+  html += '<button type="button" id="luma-sk-unpin-all" style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);border-radius:6px;color:#e74c3c;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">Unpin All Manifests</button>';
+  html += '<span id="luma-sk-unpin-status" style="font-size:11px;color:#8f98a0;"></span>';
+  html += '</div>';
+  html += '</div></div>';
+
   // ── About ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">About</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
@@ -1323,6 +1431,43 @@ function renderSettingsTab(container: HTMLElement) {
   html += '</div></div></div>';
   container.innerHTML = html;
   wireSteamAccountSection(container);
+  wireSteamKeysSection(container);
+}
+
+function wireSteamKeysSection(container: HTMLElement) {
+  var unpinAllBtn = container.querySelector('#luma-sk-unpin-all') as HTMLButtonElement;
+  var statusEl = container.querySelector('#luma-sk-unpin-status') as HTMLElement;
+  if (!unpinAllBtn || !statusEl) return;
+
+  unpinAllBtn.addEventListener('click', function() {
+    unpinAllBtn.disabled = true;
+    unpinAllBtn.textContent = 'Unpinning\u2026';
+    statusEl.textContent = '';
+    fetch(steamKeysUnpinUrl(), {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appId: 0 })
+    })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        unpinAllBtn.disabled = false;
+        unpinAllBtn.textContent = 'Unpin All Manifests';
+        if (data && data.ok) {
+          statusEl.textContent = data.message || 'Done';
+          statusEl.style.color = '#64c882';
+        } else {
+          statusEl.textContent = (data && data.message) || 'Failed';
+          statusEl.style.color = '#e74c3c';
+        }
+      })
+      .catch(function() {
+        unpinAllBtn.disabled = false;
+        unpinAllBtn.textContent = 'Unpin All Manifests';
+        statusEl.textContent = 'Bridge not available';
+        statusEl.style.color = '#e74c3c';
+      });
+  });
 }
 
 function wireSteamAccountSection(container: HTMLElement) {
