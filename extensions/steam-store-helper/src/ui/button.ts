@@ -4,7 +4,6 @@ import { ST } from '../ui/styles';
 import { ensureKeyframes } from '../ui/styles';
 import { extractAppId, findActionContainer, localStatusUrl } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
-import { stopDownloadPoll } from '../modals/source';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -27,7 +26,8 @@ export function abortPendingRequests(): void {
     clearTimeout(state.recoveryTimer);
     state.recoveryTimer = null;
   }
-  stopDownloadPoll();
+  // NOTE: download poll intentionally NOT stopped here — SPA navigations call
+  // abortPendingRequests() and in-flight download jobs must keep polling.
   cancelAllRetries();
   _fetchSeq.value++;
 }

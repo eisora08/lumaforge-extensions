@@ -137,6 +137,11 @@ export function ensureKeyframes(): void {
       'opacity:1;' +
       '}' +
 
+      '.luma-source-card:first-child .luma-source-tooltip{' +
+      'bottom:auto;' +
+      'top:calc(100% + 8px);' +
+      '}' +
+
       '.luma-source-expiry{' +
       'display:inline-flex;' +
       'align-items:center;' +

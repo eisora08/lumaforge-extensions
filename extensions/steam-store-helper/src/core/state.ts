@@ -92,6 +92,13 @@ interface State {
     pollTimer: ReturnType<typeof setTimeout> | null;
   }>;
   providerStatsCache: any[] | null;
+  // Called when a source download settles (completed/failed) — set by sidebar
+  // dashboard to refresh stats/lua cards; cleared when the dashboard unmounts.
+  onDownloadSettled: (() => void) | null;
+  // Source download modal poll
+  requestContext: { requestId: string; appId: string; sourceId: string } | null;
+  downloadPollSeq: number;
+  downloadPollTimer: ReturnType<typeof setTimeout> | null;
   popstateHandler: (() => void) | null;
   hashchangeHandler: (() => void) | null;
   pageshowHandler: (() => void) | null;
@@ -163,6 +170,10 @@ var state: State = {
   activeDownloads: [],
   activeDepotJobs: [],
   providerStatsCache: null,
+  onDownloadSettled: null,
+  requestContext: null,
+  downloadPollSeq: 0,
+  downloadPollTimer: null,
   popstateHandler: null,
   hashchangeHandler: null,
   pageshowHandler: null,

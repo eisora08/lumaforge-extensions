@@ -86,9 +86,9 @@ export function openDepotModal(appId: string): void {
     });
 
     var headerRight = document.createElement('div');
-    headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;');
-    headerRight.appendChild(hdrVersion);
+    headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;');
     headerRight.appendChild(closeBtn);
+    headerRight.appendChild(hdrVersion);
 
     header.appendChild(hdrIcon);
     header.appendChild(hdrTextWrap);

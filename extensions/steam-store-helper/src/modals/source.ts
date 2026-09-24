@@ -16,7 +16,8 @@ export function closeModal(): void {
       state.providerAbortController.abort();
       state.providerAbortController = null;
     }
-    stopDownloadPoll();
+    // NOTE: download poll is NOT stopped here — it must survive modal close
+    // so in-flight jobs keep updating activeDownloads/history until terminal.
     if (state.fixesModalState) {
       state.fixesModalState.pollSeq++;
       if (state.fixesModalState.pollTimer) clearTimeout(state.fixesModalState.pollTimer);
@@ -90,7 +91,9 @@ export function openSourceModal(appId: string): void {
     closeBtn.addEventListener('click', closeModal);
 
     var headerRight = document.createElement('div');
-    headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0;');
+    headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;');
+    var headerRightRow = document.createElement('div');
+    headerRightRow.setAttribute('style', 'display:flex;align-items:center;gap:6px;flex-shrink:0;');
 
     var settingsBtn = document.createElement('button');
     settingsBtn.type = 'button';
@@ -104,9 +107,10 @@ export function openSourceModal(appId: string): void {
       openSettingsModal();
     });
 
-    headerRight.appendChild(hdrVersion);
-    headerRight.appendChild(settingsBtn);
     headerRight.appendChild(closeBtn);
+    headerRightRow.appendChild(hdrVersion);
+    headerRightRow.appendChild(settingsBtn);
+    headerRight.appendChild(headerRightRow);
 
     header.appendChild(hdrIcon);
     header.appendChild(hdrTextWrap);
@@ -124,12 +128,6 @@ export function openSourceModal(appId: string): void {
 
     var footer = document.createElement('div');
     footer.setAttribute('style', ST.footer);
-    var autofetchWrap = document.createElement('label');
-    autofetchWrap.id = 'luma-sk-autofetch-wrap';
-    autofetchWrap.setAttribute('style', 'display:none;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.7);user-select:none;');
-    autofetchWrap.innerHTML =
-      '<input type="checkbox" id="luma-sk-autofetch" style="accent-color:#1b6cfg;cursor:pointer;">' +
-      '<span>Auto-fetch manifests after generating</span>';
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
     footerNote.textContent = 'Packages are installed through LumaForge';
@@ -138,7 +136,6 @@ export function openSourceModal(appId: string): void {
     cancelBtn.setAttribute('style', ST.cancelBtn);
     cancelBtn.textContent = 'Cancel';
     cancelBtn.addEventListener('click', closeModal);
-    footer.appendChild(autofetchWrap);
     footer.appendChild(footerNote);
     footer.appendChild(cancelBtn);
     footer.setAttribute('style', ST.footer + ';justify-content:space-between;');
@@ -237,7 +234,6 @@ export function openSourceModal(appId: string): void {
               var wrap = document.getElementById('luma-sk-autofetch-wrap');
               var cb = document.getElementById('luma-sk-autofetch') as HTMLInputElement | null;
               if (wrap && cb) {
-                wrap.style.display = 'flex';
                 fetch(steamKeysSettingsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
                   .then(function (r) { return r.ok ? r.json() : null; })
                   .then(function (d2) {
@@ -663,6 +659,16 @@ export function renderSources(
         }
       }
 
+      if (src.id === 'steamkeys') {
+        var autofetchWrap = document.createElement('label');
+        autofetchWrap.id = 'luma-sk-autofetch-wrap';
+        autofetchWrap.setAttribute('style', 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.7);user-select:none;margin-top:6px;');
+        autofetchWrap.innerHTML =
+          '<input type="checkbox" id="luma-sk-autofetch" style="accent-color:#66c0ff;cursor:pointer;">' +
+          '<span>Auto-fetch manifests after generating</span>';
+        info.appendChild(autofetchWrap);
+      }
+
       var badge = document.createElement('div');
       badge.setAttribute('data-lumaforge-source-badge', 'true');
       badge.setAttribute('class', 'luma-source-badge-wrap');
@@ -825,7 +831,7 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
           badge.innerHTML = dot('blue') + '<span>Queued</span>';
         }
 
-        showDownloadProgress(appId, d.requestId);
+        showDownloadProgress(appId, d.requestId, sourceId);
         startDownloadPoll(d.requestId, appId);
       })
       .catch(function (err) {
@@ -848,15 +854,16 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
 // ---------------------------------------------------------------------------
 // Download progress: show progress state in modal
 // ---------------------------------------------------------------------------
-export function showDownloadProgress(appId: string, requestId: string): void {
+export function showDownloadProgress(appId: string, requestId: string, sourceId?: string): void {
   try {
     var body = getModalBody();
     if (!body) return;
 
+    var title = sourceId === 'steamkeys' ? 'Generating\u2026' : 'Downloading\u2026';
     body.innerHTML =
       '<div style="' + ST.progressWrap + '">' +
       '<div style="margin-bottom:14px;">' + svgSpinner() + '</div>' +
-      '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">Downloading\u2026</div>' +
+      '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">' + title + '</div>' +
       '<div style="' + ST.progressLabel + '"><span style="font-family:monospace;font-size:10px;opacity:.7;" title="' + (requestId || '') + '">' + (requestId || '').slice(0, 16) + '\u2026</span></div>' +
       '<div style="' + ST.progressBar + '"><div id="luma-progress-fill" style="' + ST.progressFill + '"></div></div>' +
       '<div id="luma-progress-status" style="font-size:12px;color:#66c0ff;">Queued</div>' +
@@ -898,9 +905,14 @@ export function startDownloadPoll(requestId: string, appId: string): void {
   state.downloadPollSeq++;
   var seq = state.downloadPollSeq;
 
+  function notifySettled() {
+    try { if (state.onDownloadSettled) state.onDownloadSettled(); } catch (_) {}
+  }
+
   function poll() {
-    if (!state.requestContext || state.requestContext.requestId !== requestId) return;
-    if (!state.activated || state.currentAppId !== appId) return;
+    // Only bail if a newer poll/teardown superseded this one. Never gate on
+    // modal visibility or currentAppId — jobs outlive navigation/modal close.
+    if (state.downloadPollSeq !== seq) return;
 
     console.log('[LUMA_INJECT] Polling download status for requestId:', requestId);
 
@@ -915,7 +927,15 @@ export function startDownloadPoll(requestId: string, appId: string): void {
       })
       .then(function (d) {
         if (state.downloadPollSeq !== seq) return;
-        if (!d || !d.ok) throw new Error((d && d.message) || 'Invalid response');
+        // Job unknown to the bridge (map wiped/restarted) — give up.
+        if (!d || !d.ok) {
+          if (d && d.errorCode === 'NOT_FOUND') {
+            state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+            notifySettled();
+            return;
+          }
+          throw new Error((d && d.message) || 'Invalid response');
+        }
 
         console.log('[LUMA_INJECT] Download status:', d.status, 'for requestId:', requestId);
         updateProgressUI(d);
@@ -926,28 +946,27 @@ export function startDownloadPoll(requestId: string, appId: string): void {
             state.activeDownloads[i].phase = d.message || d.status || '';
             state.activeDownloads[i].progress = d.progress || 0;
             state.activeDownloads[i].speed = d.speed || 0;
-            state.activeDownloads[i].bytesDownloaded = d.bytesDownloaded || 0;
+            state.activeDownloads[i].bytesDownloaded = d.bytesDownloaded || d.bytesRead || 0;
             state.activeDownloads[i].totalBytes = d.totalBytes || 0;
             break;
           }
         }
 
         if (d.status === 'completed') {
-          state.requestContext = null;
           var completedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
           state.downloadHistory.unshift({
             id: requestId, appId: appId, gameName: completedDl ? completedDl.gameName : undefined,
             type: 'source', status: 'completed', timestamp: Date.now(),
-            progress: 100, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
+            progress: 100, bytesDownloaded: d.bytesDownloaded || d.bytesRead || 0, totalBytes: d.totalBytes || 0,
           });
           if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
           saveSessionState();
           showDownloadSuccess(appId, requestId);
+          notifySettled();
           return;
         }
         if (d.status === 'failed') {
-          state.requestContext = null;
           var failedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
           state.downloadHistory.unshift({
@@ -958,6 +977,7 @@ export function startDownloadPoll(requestId: string, appId: string): void {
           if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
           saveSessionState();
           showDownloadError(appId, d.message || 'Download failed', d.errorCode);
+          notifySettled();
           return;
         }
 
@@ -966,6 +986,13 @@ export function startDownloadPoll(requestId: string, appId: string): void {
       .catch(function (err) {
         if (state.downloadPollSeq !== seq) return;
         console.error('[LUMA_INJECT] Poll error:', err.message || err);
+        // NOT_FOUND means the job no longer exists (e.g. bridge restarted) —
+        // give up instead of polling forever.
+        if (err && (err.message || '').indexOf('NOT_FOUND') !== -1) {
+          state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          notifySettled();
+          return;
+        }
         state.downloadPollTimer = setTimeout(poll, 2500);
       });
   }
@@ -1051,11 +1078,12 @@ export function restartDownloadPoll(requestId: string, appId: string): void {
 // ---------------------------------------------------------------------------
 export function showDownloadSuccess(appId: string, requestId: string): void {
   try {
+    // Button state must update even if the user closed the modal already.
+    setButtonState(appId, ST.btnSuccess + 'cursor:default;', svgCheck() + '<span>ADDED TO LUMAFORGE</span>', true);
+    setButtonLumaState(appId, 'added');
+
     var body = getModalBody();
     if (!body) return;
-
-    setButtonState(appId, ST.btnSuccess, svgCheck() + '<span>ADDED TO LUMAFORGE</span>', false);
-    setButtonLumaState(appId, 'added');
 
     var depotBtn = IS_LINUX
       ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>DOWNLOAD CONTENT</span></button>'
@@ -1106,14 +1134,15 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
 // ---------------------------------------------------------------------------
 export function showDownloadError(appId: string, message: string, errorCode?: string): void {
   try {
-    var body = getModalBody();
-    if (!body) return;
-
+    // Button state must reset even if the user closed the modal already.
     setButtonState(appId, ST.btn, svgDownload() + '<span>TRY AGAIN</span>', false);
     setButtonLumaState(appId, 'ready');
     setTimeout(function () {
       setButtonState(appId, ST.btn, svgDownload() + '<span>ADD VIA LUMAFORGE</span>', false);
     }, 4000);
+
+    var body = getModalBody();
+    if (!body) return;
 
     var detail = errorCode ? (errorCode + ': ' + message) : message;
     body.innerHTML =

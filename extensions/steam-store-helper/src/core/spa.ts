@@ -2,7 +2,6 @@ import { state, BTN_ID, BTN_APPID_ATTR, NAMESPACE } from '../core/state';
 import { extractAppId } from '../ui/helpers';
 import { abortPendingRequests, cancelAllRetries, removeButton, getObserverRoot, syncNamespaceState, ensureLumaButtonExists, scheduleBridgeRecovery } from '../ui/button';
 import { closeModal } from '../modals/source';
-import { stopDownloadPoll } from '../modals/source';
 import { ensureSettingsButton } from '../modals/settings';
 import { openSidebar } from '../sidebar/SidebarPanel';
 

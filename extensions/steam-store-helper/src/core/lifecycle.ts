@@ -140,6 +140,7 @@ function setupEventDelegation(): void {
             return;
           }
           if (btn.getAttribute('aria-disabled') === 'true') return;
+          if (btnLumaState === 'added') return;
           var btnText = btn.textContent || '';
           if (btnText.indexOf('INSTALL') !== -1 || btnText.indexOf('IN LIBRARY') !== -1) {
             if (IS_LINUX) {

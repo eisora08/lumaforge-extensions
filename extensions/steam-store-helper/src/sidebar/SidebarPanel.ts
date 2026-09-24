@@ -19,6 +19,14 @@ var _toolsPollTimer: ReturnType<typeof setTimeout> | null = null;
 var _toolsPollSeq = 0;
 var _fixesPollTimer: ReturnType<typeof setTimeout> | null = null;
 var _fixesPollSeq = 0;
+var _dashPollTimer: ReturnType<typeof setTimeout> | null = null;
+var _dashPollSeq = 0;
+
+// Lua list client-side cache + search/sort state (persists across tab switches)
+var _luaFiles: any[] = [];
+var _luaPins: any = {};
+var _luaQuery = '';
+var _luaSort = 'name-asc';
 
 function showSteamRestartDialog(appId: string, gameName: string): void {
   var overlay = document.createElement('div');
@@ -89,6 +97,7 @@ function closeSidebar() {
   if (panel) panel.remove();
   if (backdrop) backdrop.remove();
   stopDownloadsPoll();
+  stopDashPoll();
   stopToolsPoll();
   stopFixesPoll();
   state.sidebarOpen = false;
@@ -119,6 +128,7 @@ function renderTabContent(tabId: string) {
   (content as HTMLElement).innerHTML = '<div style="text-align:center;padding:40px;color:#8f98a0;">Loading...</div>';
   if (tabId !== 'tools') stopToolsPoll();
   if (tabId !== 'fixes') stopFixesPoll();
+  if (tabId !== 'dashboard') stopDashPoll();
 
   switch (tabId) {
     case 'dashboard': renderDashboardTab(content as HTMLElement); break;
@@ -196,46 +206,48 @@ function getSpeedHistory(jobId: string): number[] {
 // ---------------------------------------------------------------------------
 function renderDashboardTab(container: HTMLElement) {
   var html = '';
+  html += '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">';
   html += '<div class="luma-stat-card"><div class="luma-stat-icon blue">' + svgGear() + '</div><div><div class="luma-stat-value" id="luma-dash-providers">--</div><div class="luma-stat-label">Active Providers</div></div></div>';
   html += '<div class="luma-stat-card"><div class="luma-stat-icon green">' + svgDownload() + '</div><div><div class="luma-stat-value" id="luma-dash-downloads">' + (state.activeDownloads.length + state.activeDepotJobs.length) + '</div><div class="luma-stat-label">Active Downloads</div></div></div>';
   html += '</div>';
 
-  // Active downloads list
-  if (state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0) {
-    html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Active Now</div>';
-    for (var i = 0; i < state.activeDownloads.length; i++) {
-      var dl = state.activeDownloads[i];
-      html += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon blue">' + svgDownload() + '</div><div style="flex:1;min-width:0;">';
-      html += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">App ' + dl.appId + '</div>';
-      html += '<div style="font-size:10px;color:#8f98a0;">' + escapeHtml(dl.phase || 'Downloading') + '</div>';
-      html += '</div></div>';
-    }
-    for (var j = 0; j < state.activeDepotJobs.length; j++) {
-      var job = state.activeDepotJobs[j];
-      html += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon orange">' + svgBox() + '</div><div style="flex:1;min-width:0;">';
-      html += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.gameName || 'App ' + job.appId) + '</div>';
-      html += '<div style="font-size:10px;color:#8f98a0;">' + escapeHtml(job.phase || job.status) + '</div>';
-      html += '</div></div>';
-    }
-    html += '</div>';
-  }
+  // Active downloads list (repainted live by the dashboard poll)
+  html += '<div class="luma-sidebar-section" id="luma-dash-active-section" style="' + ((state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0) ? '' : 'display:none;') + '"><div class="luma-sidebar-section-title">Active Now</div><div id="luma-dash-active"></div></div>';
 
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Quick Actions</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
   html += '<button class="luma-sidebar-btn secondary" id="luma-dash-refresh">Refresh</button>';
   html += '</div></div>';
 
-  // Lua Scripts section
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Lua Scripts</div>';
-  html += '<div id="luma-dash-lua-container" style="max-height:300px;overflow-y:auto;padding-right:4px;">';
+  // Lua Scripts section — flex:1 reaches the sidebar footer, scrolls internally
+  html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" style="flex-shrink:0;">Lua Scripts</div>';
+  html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-shrink:0;">';
+  html += '<input id="luma-lua-search" type="text" placeholder="Search\u2026" value="' + esc(_luaQuery) + '" style="flex:1 1 auto;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;" />';
+  html += '<select id="luma-lua-sort" style="flex:0 0 96px;width:96px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 6px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;">';
+  html += '<option value="name-asc"' + (_luaSort === 'name-asc' ? ' selected' : '') + '>Name A-Z</option>';
+  html += '<option value="name-desc"' + (_luaSort === 'name-desc' ? ' selected' : '') + '>Name Z-A</option>';
+  html += '<option value="newest"' + (_luaSort === 'newest' ? ' selected' : '') + '>Newest</option>';
+  html += '<option value="oldest"' + (_luaSort === 'oldest' ? ' selected' : '') + '>Oldest</option>';
+  html += '</select>';
+  html += '</div>';
+  html += '<div id="luma-dash-lua-container" style="flex:1;min-height:0;overflow-y:auto;padding-right:4px;">';
   html += '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">Loading...</div>';
   html += '</div></div>';
+  html += '</div>';
 
   container.innerHTML = html;
 
+  renderActiveNow();
+
   var refreshBtn = document.getElementById('luma-dash-refresh');
   if (refreshBtn) refreshBtn.addEventListener('click', function() { renderDashboardTab(container); });
+
+  var searchEl = document.getElementById('luma-lua-search') as HTMLInputElement | null;
+  if (searchEl) searchEl.addEventListener('input', function() { _luaQuery = searchEl.value; paintLuaCards(); });
+
+  var sortEl = document.getElementById('luma-lua-sort') as HTMLSelectElement | null;
+  if (sortEl) sortEl.addEventListener('change', function() { _luaSort = sortEl.value; paintLuaCards(); });
 
   // Fetch provider stats
   fetch(bridgeUrl('/api/provider-stats'), { method: 'GET', mode: 'cors', cache: 'no-store' })
@@ -252,6 +264,40 @@ function renderDashboardTab(container: HTMLElement) {
 
   // Fetch Lua files + pin/installed state
   loadLuaCards();
+
+  // Live updates while the dashboard is mounted (start first: it resets the hook)
+  startDashPoll();
+  state.onDownloadSettled = function() {
+    renderActiveNow();
+    loadLuaCards();
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard poll — keeps Active Now + download phases live (no Downloads tab)
+// ---------------------------------------------------------------------------
+function startDashPoll(): void {
+  stopDashPoll();
+  _dashPollSeq++;
+  var seq = _dashPollSeq;
+
+  function tick(): void {
+    if (seq !== _dashPollSeq) return;
+    // Re-fetch phases/progress for tracked source downloads
+    if (state.activeDownloads.length > 0) pollSourceDownloads(_downloadsPollSeq);
+    renderActiveNow();
+    _dashPollTimer = setTimeout(tick, 1500);
+  }
+  _dashPollTimer = setTimeout(tick, 1500);
+}
+
+function stopDashPoll(): void {
+  _dashPollSeq++;
+  if (_dashPollTimer) {
+    clearTimeout(_dashPollTimer);
+    _dashPollTimer = null;
+  }
+  state.onDownloadSettled = null;
 }
 
 // ---------------------------------------------------------------------------
@@ -268,16 +314,85 @@ function renderLuaCards(pins: any): void {
   fetch(luaFilesUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
     .then(function(r) { return r.json(); })
     .then(function(data) {
-      var luaContainer = document.getElementById('luma-dash-lua-container');
-      if (!luaContainer) return;
-      if (!data.ok || !data.files || data.files.length === 0) {
-        luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">No Lua scripts installed</div>';
-        return;
-      }
+      _luaPins = pins;
+      _luaFiles = (data && data.ok && data.files) ? data.files : [];
+      paintLuaCards();
+    })
+    .catch(function() {
+      _luaPins = pins;
+      _luaFiles = [];
+      paintLuaCards();
+    });
+}
 
-      var h = '';
-      for (var i = 0; i < data.files.length; i++) {
-        var f = data.files[i];
+function renderActiveNow(): void {
+  var section = document.getElementById('luma-dash-active-section');
+  var wrap = document.getElementById('luma-dash-active');
+  var stat = document.getElementById('luma-dash-downloads');
+  if (stat) stat.textContent = String(state.activeDownloads.length + state.activeDepotJobs.length);
+  if (!section || !wrap) return;
+
+  var hasAny = state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0;
+  section.style.display = hasAny ? '' : 'none';
+  if (!hasAny) { wrap.innerHTML = ''; return; }
+
+  var h = '';
+  for (var i = 0; i < state.activeDownloads.length; i++) {
+    var dl = state.activeDownloads[i];
+    var pct = Math.max(0, Math.min(100, dl.progress || 0));
+    h += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon blue">' + svgDownload() + '</div><div style="flex:1;min-width:0;">';
+    h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">App ' + esc(dl.appId) + '</div>';
+    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(dl.phase || 'Downloading') + ' \u00b7 ' + pct.toFixed(0) + '%</div>';
+    h += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:#66c0ff;border-radius:2px;transition:width .3s;"></div></div>';
+    h += '</div></div>';
+  }
+  for (var j = 0; j < state.activeDepotJobs.length; j++) {
+    var job = state.activeDepotJobs[j];
+    h += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon orange">' + svgBox() + '</div><div style="flex:1;min-width:0;">';
+    h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.gameName || 'App ' + job.appId) + '</div>';
+    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.phase || job.status) + '</div>';
+    h += '</div></div>';
+  }
+  wrap.innerHTML = h;
+}
+
+function paintLuaCards(): void {
+  var luaContainer = document.getElementById('luma-dash-lua-container');
+  if (!luaContainer) return;
+
+  var pins = _luaPins;
+  var q = _luaQuery.trim().toLowerCase();
+  var files = _luaFiles.slice();
+  if (q) {
+    files = files.filter(function(f: any) {
+      return String(f.name || '').toLowerCase().indexOf(q) !== -1 ||
+             String(f.appId || '').indexOf(q) !== -1 ||
+             String(f.filename || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  files.sort(function(a: any, b: any) {
+    if (_luaSort === 'newest' || _luaSort === 'oldest') {
+      var diff = (b.modified || 0) - (a.modified || 0);
+      if (diff !== 0) return _luaSort === 'newest' ? diff : -diff;
+      // Same mtime (bulk-created files): fall back to appId order
+      diff = Number(b.appId || 0) - Number(a.appId || 0);
+      return _luaSort === 'newest' ? diff : -diff;
+    }
+    var an = String(a.name || 'App ' + a.appId).toLowerCase();
+    var bn = String(b.name || 'App ' + b.appId).toLowerCase();
+    if (an < bn) return _luaSort === 'name-asc' ? -1 : 1;
+    if (an > bn) return _luaSort === 'name-asc' ? 1 : -1;
+    return 0;
+  });
+
+  if (files.length === 0) {
+    luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">' + (_luaFiles.length === 0 ? 'No Lua scripts installed' : 'No matches') + '</div>';
+    return;
+  }
+
+  var h = '';
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
         var pin = pins[f.appId] || null;
         var installed = !!(pin && pin.installed);
         var hasPins = !!(pin && pin.hasPins);
@@ -292,7 +407,11 @@ function renderLuaCards(pins: any): void {
         h += '<div style="font-size:10px;color:#8f98a0;">ID: ' + esc(f.appId) + ' \u00b7 ' + esc(f.filename) + badges + '</div>';
         h += '</div>';
         h += '<div style="position:relative;flex-shrink:0;">';
-        h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="Manifest pins" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">\u{1F4CC}</button>';
+        if (hasPins) {
+          h += '<button class="luma-lua-pin-btn" data-lua-pin-direct="' + esc(f.appId) + '" title="Unpin manifest" style="background:rgba(240,173,78,.15);border:1px solid rgba(240,173,78,.5);color:#f0ad4e;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">\u{1F4CC}</button>';
+        } else {
+          h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="Manifest pins" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">\u{1F4CC}</button>';
+        }
         h += '<div class="luma-lua-pin-menu" data-lua-pin-menu="' + esc(f.appId) + '" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;background:#1b2838;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);text-align:left;">';
         h += '<button data-lua-pin-action="current" data-app="' + esc(f.appId) + '" style="display:' + (installed ? 'block' : 'none') + ';width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u{1F4CC} Pin to Current Version</button>';
         h += '<button data-lua-pin-action="latest" data-app="' + esc(f.appId) + '" style="display:block;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u{1F4CC} Pin to Latest Version</button>';
@@ -304,15 +423,47 @@ function renderLuaCards(pins: any): void {
       }
       luaContainer.innerHTML = h;
 
-      // Close menus when clicking outside a menu
-      luaContainer.addEventListener('click', function(ev) {
-        var t = ev.target as HTMLElement;
-        if (t.closest && t.closest('[data-lua-pin-menu],[data-lua-pin-toggle]')) return;
-        var openMenus = luaContainer.querySelectorAll('[data-lua-pin-menu]');
-        for (var m = 0; m < openMenus.length; m++) {
-          (openMenus[m] as HTMLElement).style.display = 'none';
-        }
-      });
+      // Close menus when clicking outside a menu (bind once per container)
+      if (!luaContainer.getAttribute('data-pin-bound')) {
+        luaContainer.setAttribute('data-pin-bound', '1');
+        luaContainer.addEventListener('click', function(ev) {
+          var t = ev.target as HTMLElement;
+          if (t.closest && t.closest('[data-lua-pin-menu],[data-lua-pin-toggle],[data-lua-pin-direct]')) return;
+          var openMenus = luaContainer.querySelectorAll('[data-lua-pin-menu]');
+          for (var m = 0; m < openMenus.length; m++) {
+            (openMenus[m] as HTMLElement).style.display = 'none';
+          }
+        });
+      }
+
+      // Direct unpin (pinned state button)
+      var pinDirects = luaContainer.querySelectorAll('[data-lua-pin-direct]');
+      for (var d = 0; d < pinDirects.length; d++) {
+        (function(btn: Element) {
+          btn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            var appId = btn.getAttribute('data-lua-pin-direct');
+            if (!appId) return;
+            (btn as HTMLButtonElement).disabled = true;
+
+            fetch(steamKeysUnpinUrl(), {
+              method: 'POST',
+              mode: 'cors',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ appId: appId })
+            })
+              .then(function(r) { return r.json(); })
+              .then(function(res) {
+                if (res && res.ok) loadLuaCards();
+                else {
+                  (btn as HTMLButtonElement).disabled = false;
+                  console.warn('[LUMA_INJECT] Unpin failed:', res && res.message);
+                }
+              })
+              .catch(function() { (btn as HTMLButtonElement).disabled = false; });
+          });
+        })(pinDirects[d]);
+      }
 
       // Pin toggle buttons
       var pinToggles = luaContainer.querySelectorAll('[data-lua-pin-toggle]');
@@ -389,6 +540,10 @@ function renderLuaCards(pins: any): void {
                   (card as HTMLElement).style.opacity = '0';
                   (card as HTMLElement).style.transform = 'translateX(20px)';
                   setTimeout(function() { card.remove(); }, 300);
+                  for (var k = _luaFiles.length - 1; k >= 0; k--) {
+                    if (String(_luaFiles[k] && _luaFiles[k].appId) === String(appId)) _luaFiles.splice(k, 1);
+                  }
+                  setTimeout(function() { loadLuaCards(); }, 350);
                 } else {
                   (btn as HTMLButtonElement).textContent = '\u{1F5D1}\u{FE0F}';
                   (btn as HTMLButtonElement).disabled = false;
@@ -401,11 +556,6 @@ function renderLuaCards(pins: any): void {
           });
         })(deleteBtns[j]);
       }
-    })
-    .catch(function() {
-      var luaContainer = document.getElementById('luma-dash-lua-container');
-      if (luaContainer) luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">No Lua scripts installed</div>';
-    });
 }
 
 // ---------------------------------------------------------------------------
@@ -974,6 +1124,8 @@ function pollSourceDownloads(seq: number) {
             });
             if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
             saveSessionState();
+            // Let the dashboard refresh lua cards / active list
+            try { if (state.onDownloadSettled) state.onDownloadSettled(); } catch (_) {}
           }
         })
         .catch(function() {});

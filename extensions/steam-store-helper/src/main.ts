@@ -19,10 +19,14 @@ function bootstrap(): void {
     console.log('[FORENSIC_INJECT] Existing lifecycle found: ' + existingLifecycle);
     console.log('[FORENSIC_INJECT] Existing version: ' + existingVersion);
 
-    // Same-version reuse: if same version is already active, just reconcile
-    if ((window as any)[NAMESPACE] && (window as any)[NAMESPACE].version === LUMA_INJECT_VERSION && (window as any)[NAMESPACE].active) {
-      console.log('[LUMA_RUNTIME] Same-version lifecycle already active, scheduling reconcile');
-      if (typeof (window as any)[NAMESPACE].scheduleReconcile === 'function') {
+    // Same-version reuse: if same version is already present, NEVER create a
+    // second instance — even while the first activate() is still pending
+    // (namespace.active is false until activation completes). Replacing the
+    // namespace here used to spawn parallel lifecycles with split state
+    // (duplicate observers/listeners, Active Now tracking a different state).
+    if ((window as any)[NAMESPACE] && (window as any)[NAMESPACE].version === LUMA_INJECT_VERSION) {
+      console.log('[LUMA_RUNTIME] Same-version lifecycle already present, skipping duplicate injection');
+      if ((window as any)[NAMESPACE].active && typeof (window as any)[NAMESPACE].scheduleReconcile === 'function') {
         (window as any)[NAMESPACE].scheduleReconcile('reinjection');
       }
       return;
