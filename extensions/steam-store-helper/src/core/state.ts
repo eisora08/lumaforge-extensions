@@ -16,6 +16,7 @@ var BRIDGE_PORT_DETECTED = false;
 try { document.title = 'SSH_INJECTED_' + DOCUMENT_ID; } catch(_) {}
 var NAMESPACE = '__lumaforge_ssh__';
 var BTN_ID = 'luma-action-btn';
+var FIXES_BTN_ID = 'luma-fixes-btn';
 var MODAL_MARKER_ATTR = 'data-lumaforge-modal';
 var MODAL_MARKER_VAL = EXTENSION_ID;
 var BTN_MARKER_ATTR = 'data-lumaforge-extension';
@@ -111,6 +112,19 @@ interface State {
     gameName?: string;
   } | null;
 
+  fixesModalState: {
+    appId: string;
+    info: any;
+    status: any;
+    catalogEntries: any[];
+    pending: Record<string, boolean>;
+    results: Record<string, { ok: boolean; message: string; at: number }>;
+    toolInstallBusy: string | null;
+    lastJobStatus: Record<string, string>;
+    pollSeq: number;
+    pollTimer: ReturnType<typeof setTimeout> | null;
+  } | null;
+
   // Session-persisted fields (survive page navigations via sessionStorage)
   currentTab: string;
   sidebarOpen: boolean;
@@ -160,6 +174,7 @@ var state: State = {
   savedFocusElement: null,
   installingAppIds: {},
   depotModalState: null,
+  fixesModalState: null,
 
   // Session-persisted defaults
   currentTab: 'downloads',
@@ -216,6 +231,7 @@ export {
   bridgeConfig,
   NAMESPACE,
   BTN_ID,
+  FIXES_BTN_ID,
   MODAL_MARKER_ATTR,
   MODAL_MARKER_VAL,
   BTN_MARKER_ATTR,

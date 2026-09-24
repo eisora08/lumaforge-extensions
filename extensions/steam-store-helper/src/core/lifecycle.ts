@@ -1,10 +1,11 @@
-import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
+import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
 import { abortPendingRequests, cancelAllRetries, removeButton, syncNamespaceState, ensureLumaButtonExists, setButtonState, setButtonLumaState, checkLocalStatus, handleLocalStatusResult } from '../ui/button';
 import { ST } from '../ui/styles';
 import { svgSpinner } from '../ui/svg';
 import { ensureSettingsButton } from '../modals/settings';
 import { closeModal, openSourceModal, stopDownloadPoll } from '../modals/source';
 import { openDepotModal } from '../modals/depot';
+import { openFixesModal } from '../modals/fixes';
 import { stopObserver, restoreHistory, patchHistory, reconcile, startObserver } from './spa';
 import { detectBridgePort, extractAppId, bridgeUrl } from '../ui/helpers';
 
@@ -110,6 +111,14 @@ function setupEventDelegation(): void {
   try {
     document.body.addEventListener('click', function (e) {
       try {
+        var fixesBtn = (e.target as HTMLElement).closest('#' + FIXES_BTN_ID);
+        if (fixesBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          var fixesAppId = fixesBtn.getAttribute(BTN_APPID_ATTR) || extractAppId();
+          if (fixesAppId) openFixesModal(fixesAppId);
+          return;
+        }
         var btn = (e.target as HTMLElement).closest('#' + BTN_ID);
         if (btn) {
           e.preventDefault();

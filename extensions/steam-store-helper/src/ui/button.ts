@@ -1,4 +1,4 @@
-import { state, _fetchSeq, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, BTN_MARKER_ATTR, BTN_MARKER_VAL, IS_LINUX, NAMESPACE, MODAL_MARKER_ATTR, MODAL_MARKER_VAL } from '../core/state';
+import { state, _fetchSeq, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, BTN_MARKER_ATTR, BTN_MARKER_VAL, IS_LINUX, NAMESPACE, MODAL_MARKER_ATTR, MODAL_MARKER_VAL } from '../core/state';
 import { svgDownload, svgSpinner, svgCheck, svgGear, svgX, svgCloudDownload } from '../ui/svg';
 import { ST } from '../ui/styles';
 import { ensureKeyframes } from '../ui/styles';
@@ -42,6 +42,55 @@ export function cancelAllRetries(): void {
 export function removeButton(): void {
   var btn = document.getElementById(BTN_ID);
   if (btn) btn.remove();
+  removeFixesButton();
+}
+
+export function removeFixesButton(): void {
+  var btn = document.getElementById(FIXES_BTN_ID);
+  if (btn) btn.remove();
+}
+
+export function updateFixesButton(appId: string): void {
+  try {
+    var mainBtn = document.getElementById(BTN_ID);
+    var existing = document.getElementById(FIXES_BTN_ID);
+    var installed = !!mainBtn &&
+      mainBtn.getAttribute(BTN_APPID_ATTR) === appId &&
+      mainBtn.getAttribute(BTN_STATE_ATTR) === 'installed';
+
+    if (!installed) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing && existing.getAttribute(BTN_APPID_ATTR) === appId) return;
+    if (existing) existing.remove();
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = FIXES_BTN_ID;
+    btn.className = 'luma-ssh-fixes-button';
+    btn.setAttribute(BTN_MARKER_ATTR, BTN_MARKER_VAL);
+    btn.setAttribute(BTN_APPID_ATTR, appId);
+    btn.setAttribute('aria-label', 'Game fixes for app ' + appId);
+    btn.title = 'Apply SmokeAPI, Steamless, Goldberg or Online-Fix';
+    btn.setAttribute('style',
+      'display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:8px 14px;cursor:pointer;' +
+      'border:1px solid rgba(255,180,60,.35);border-radius:4px;font-family:inherit;font-size:13px;font-weight:700;' +
+      'letter-spacing:.3px;background:linear-gradient(to right,rgba(255,150,40,.22),rgba(255,180,60,.14));' +
+      'color:#ffb43c;box-shadow:0 0 8px rgba(255,180,60,.18);transition:background .12s ease,border-color .12s ease;'
+    );
+    btn.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">' +
+      '<path d="M10.5 1.5l4 4-7 7H3.5v-4l7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
+      '<path d="M9 3l4 4" stroke="currentColor" stroke-width="1.4"/>' +
+      '<path d="M2 14h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
+      '</svg><span>FIXES</span>';
+
+    var parent = mainBtn.parentNode;
+    if (parent) {
+      parent.insertBefore(btn, mainBtn.nextSibling);
+    }
+  } catch (_) { }
 }
 
 export function getObserverRoot(): Node {
@@ -98,17 +147,20 @@ export function applyInLibraryState(appId: string): void {
     setButtonLumaState(appId, 'in-library');
     console.log('[LUMA_INJECT] App', appId, 'already in Luma library');
   }
+  removeFixesButton();
 }
 
 export function applyInstalledState(appId: string): void {
   setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>INSTALLED</span>', true);
   setButtonLumaState(appId, 'installed');
+  updateFixesButton(appId);
   console.log('[LUMA_INJECT] App', appId, 'content installed (blocked)');
 }
 
 export function applyInstallingState(appId: string): void {
   setButtonState(appId, ST.btnInstalled, svgSpinner() + '<span>INSTALLING</span>', true);
   setButtonLumaState(appId, 'installing');
+  removeFixesButton();
   console.log('[LUMA_INJECT] App', appId, 'content installing');
 }
 
@@ -233,13 +285,16 @@ export function handleLocalStatusResult(appId: string, err: any, data: any): voi
     // Check if this app is currently being downloaded
     if (state.installingAppIds[appId]) {
       applyInstallingState(appId);
+      removeFixesButton();
     } else if (installed) {
       applyInstalledState(appId);
     } else if (inLibrary) {
       applyInLibraryState(appId);
+      removeFixesButton();
     } else {
       setButtonState(appId, ST.btn, svgDownload() + '<span>ADD VIA LUMAFORGE</span>', false);
       setButtonLumaState(appId, 'ready');
+      removeFixesButton();
     }
   } catch (_) { }
 }

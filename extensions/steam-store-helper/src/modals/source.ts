@@ -17,6 +17,11 @@ export function closeModal(): void {
       state.providerAbortController = null;
     }
     stopDownloadPoll();
+    if (state.fixesModalState) {
+      state.fixesModalState.pollSeq++;
+      if (state.fixesModalState.pollTimer) clearTimeout(state.fixesModalState.pollTimer);
+      state.fixesModalState = null;
+    }
     var m = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"]');
     if (m) m.remove();
     if (state.savedFocusElement && (state.savedFocusElement as any).isConnected) {

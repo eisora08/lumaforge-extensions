@@ -278,6 +278,30 @@ export function toolUninstallUrl(id: string): string {
   return bridgeUrl('/api/tools/' + id + '/uninstall');
 }
 
+export function fixesInfoUrl(appId: string): string {
+  return bridgeUrl('/api/fixes/' + appId + '/info');
+}
+
+export function fixesStatusUrl(appId: string): string {
+  return bridgeUrl('/api/fixes/' + appId + '/status');
+}
+
+export function fixesApplyUrl(appId: string): string {
+  return bridgeUrl('/api/fixes/' + appId + '/apply');
+}
+
+export function fixesUnfixUrl(appId: string): string {
+  return bridgeUrl('/api/fixes/' + appId + '/unfix');
+}
+
+export function fixesAppliedUrl(): string {
+  return bridgeUrl('/api/fixes/applied');
+}
+
+export function fixesCatalogUrl(): string {
+  return bridgeUrl('/api/fixes/catalog');
+}
+
 export function getModalBody(): Element | null {
   return document.querySelector(
     '[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] [data-lumaforge-modal-body="true"]'

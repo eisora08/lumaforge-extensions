@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
 import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
-import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl } from '../ui/helpers';
+import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
 import { openDepotModal, restartSteam } from '../modals/depot';
@@ -17,6 +17,8 @@ var _downloadsPollSeq = 0;
 var _shownDepotCompletions: Record<string, boolean> = {};
 var _toolsPollTimer: ReturnType<typeof setTimeout> | null = null;
 var _toolsPollSeq = 0;
+var _fixesPollTimer: ReturnType<typeof setTimeout> | null = null;
+var _fixesPollSeq = 0;
 
 function showSteamRestartDialog(appId: string, gameName: string): void {
   var overlay = document.createElement('div');
@@ -77,6 +79,7 @@ var TABS = [
   { id: 'providers', label: 'Providers' },
   { id: 'downloads', label: 'Downloads' },
   { id: 'tools', label: 'Tools' },
+  { id: 'fixes', label: 'Fixes' },
   { id: 'settings', label: 'Settings' },
 ];
 
@@ -87,6 +90,7 @@ function closeSidebar() {
   if (backdrop) backdrop.remove();
   stopDownloadsPoll();
   stopToolsPoll();
+  stopFixesPoll();
   state.sidebarOpen = false;
   saveSessionState();
   // Show floating settings button again
@@ -114,12 +118,14 @@ function renderTabContent(tabId: string) {
   if (!content) return;
   (content as HTMLElement).innerHTML = '<div style="text-align:center;padding:40px;color:#8f98a0;">Loading...</div>';
   if (tabId !== 'tools') stopToolsPoll();
+  if (tabId !== 'fixes') stopFixesPoll();
 
   switch (tabId) {
     case 'dashboard': renderDashboardTab(content as HTMLElement); break;
     case 'providers': renderProvidersTab(content as HTMLElement); break;
     case 'downloads': renderDownloadsTab(content as HTMLElement); break;
     case 'tools': renderToolsTab(content as HTMLElement); break;
+    case 'fixes': renderFixesTab(content as HTMLElement); break;
     case 'settings': renderSettingsTab(content as HTMLElement); break;
   }
 }
@@ -1106,6 +1112,169 @@ function renderToolsTab(container: HTMLElement) {
     _toolsPollTimer = setTimeout(pollTools, 1500);
   }
   _toolsPollTimer = setTimeout(pollTools, 1500);
+}
+
+// ---------------------------------------------------------------------------
+// Fixes tab — list games with applied fixes + Unfix per type
+// ---------------------------------------------------------------------------
+function stopFixesPoll() {
+  _fixesPollSeq++;
+  if (_fixesPollTimer) {
+    clearTimeout(_fixesPollTimer);
+    _fixesPollTimer = null;
+  }
+}
+
+var FIX_APPLIED_MAP: Array<{ appliedKey: string; label: string; tool: string; fixType?: string }> = [
+  { appliedKey: 'smokeApi', label: 'SmokeAPI', tool: 'smokeapi' },
+  { appliedKey: 'steamless', label: 'Steamless', tool: 'steamless' },
+  { appliedKey: 'goldberg', label: 'Goldberg', tool: 'goldberg' },
+  { appliedKey: 'onlineFix', label: 'Online-Fix', tool: 'online_fix' },
+  { appliedKey: 'RockstarFix', label: 'Rockstar Fix', tool: 'catalog', fixType: 'RockstarFix' },
+  { appliedKey: 'Voices38Fix', label: 'Voices38 Fix', tool: 'catalog', fixType: 'Voices38Fix' },
+];
+
+function renderFixesTab(container: HTMLElement) {
+  stopFixesPoll();
+  var seq = ++_fixesPollSeq;
+
+  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Applied Fixes</div>';
+  html += '<div id="luma-fixes-applied-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' Scanning fix logs…</div></div>';
+  html += '</div>';
+  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">Notes</div>';
+  html += '<div style="font-size:11px;color:#8f98a0;line-height:1.6;">';
+  html += '<div>Fixes are tracked per game in <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">lumaforge-fix-log-&lt;appid&gt;.log</code>.</div>';
+  html += '<div style="margin-top:4px;">Unfix removes the pasted files and restores any <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">.bak</code> backups.</div>';
+  html += '</div></div>';
+  container.innerHTML = html;
+
+  var listEl = document.getElementById('luma-fixes-applied-list');
+
+  function badge(label: string, bg: string, color: string): string {
+    return '<span style="padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:' + bg + ';color:' + color + ';">' + esc(label) + '</span>';
+  }
+
+  function renderRows(games: Array<{ appId: string; name: string; applied: Record<string, boolean> }>) {
+    if (seq !== _fixesPollSeq || !listEl || !document.getElementById('luma-fixes-applied-list')) return;
+
+    if (!games || games.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8f98a0;">No fixes applied yet</div>';
+      return;
+    }
+
+    var rows = '';
+    for (var i = 0; i < games.length; i++) {
+      var g = games[i];
+      var active = FIX_APPLIED_MAP.filter(function (m) { return g.applied[m.appliedKey]; });
+
+      rows += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;" data-fix-game="' + esc(g.appId) + '">';
+      rows += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
+      rows += '<div style="min-width:0;">';
+      rows += '<div style="font-size:13px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(g.name) + '</div>';
+      rows += '<div style="font-size:10px;color:#8f98a0;">App ' + esc(g.appId) + '</div>';
+      rows += '</div>';
+      rows += '<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
+      for (var j = 0; j < active.length; j++) {
+        rows += badge(active[j].label, 'rgba(100,200,130,.15)', '#64c882');
+      }
+      rows += '</div>';
+      rows += '</div>';
+
+      rows += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      for (var k = 0; k < active.length; k++) {
+        var m = active[k];
+        rows += '<button class="luma-sidebar-btn secondary" data-fix-unfix-app="' + esc(g.appId) + '" data-fix-unfix-tool="' + esc(m.tool) + '"' +
+          (m.fixType ? ' data-fix-unfix-type="' + esc(m.fixType) + '"' : '') +
+          '>Unfix ' + esc(m.label) + '</button>';
+      }
+      rows += '</div>';
+      rows += '</div>';
+    }
+
+    listEl.innerHTML = rows;
+
+    var buttons = listEl.querySelectorAll('[data-fix-unfix-app]');
+    for (var b = 0; b < buttons.length; b++) {
+      buttons[b].addEventListener('click', function(this: HTMLElement) {
+        var appId = this.getAttribute('data-fix-unfix-app') || '';
+        var tool = this.getAttribute('data-fix-unfix-tool') || '';
+        var fixType = this.getAttribute('data-fix-unfix-type');
+        if (!appId || !tool) return;
+        this.setAttribute('disabled', 'true');
+        this.style.opacity = '0.5';
+        this.textContent = 'Unfixing…';
+        var payload: any = { tool: tool };
+        if (fixType) payload.fix_type = fixType;
+        fetch(fixesUnfixUrl(appId), {
+          method: 'POST',
+          mode: 'cors',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+          .then(function(r) { return r.json(); })
+          .then(function() {
+            setTimeout(function() { load(); }, 400);
+          })
+          .catch(function() {
+            setTimeout(function() { load(); }, 400);
+          });
+      });
+    }
+  }
+
+  function load() {
+    if (seq !== _fixesPollSeq) return;
+    fetch(fixesAppliedUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (seq !== _fixesPollSeq) return;
+        var appIds: string[] = (d && d.appIds) ? d.appIds.map(function(a: any) { return String(a); }) : [];
+        if (appIds.length === 0) {
+          renderRows([]);
+          return;
+        }
+        return Promise.all(appIds.map(function(appId) {
+          return Promise.all([
+            fetch(fixesInfoUrl(appId), { method: 'GET', mode: 'cors', cache: 'no-store' })
+              .then(function(r) { return r.json(); })
+              .catch(function() { return null; }),
+            fetch(fixesStatusUrl(appId), { method: 'GET', mode: 'cors', cache: 'no-store' })
+              .then(function(r) { return r.json(); })
+              .catch(function() { return null; }),
+          ]).then(function(res) {
+            var info = res[0] && res[0].info;
+            var status = res[1];
+            return {
+              appId: appId,
+              name: (info && info.name) || ('App ' + appId),
+              applied: (status && status.applied) || {},
+            };
+          });
+        }));
+      })
+      .then(function(games) {
+        if (seq !== _fixesPollSeq) return;
+        if (games) renderRows(games as any);
+      })
+      .catch(function() {
+        if (seq !== _fixesPollSeq || !listEl) return;
+        listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#e74c3c;">' +
+          '<div style="margin-bottom:8px;">' + svgErrorCircle() + '</div>' +
+          '<div style="font-size:12px;">Bridge not available</div>' +
+          '</div>';
+      });
+  }
+
+  load();
+
+  function pollFixes() {
+    if (seq !== _fixesPollSeq) return;
+    if (!document.getElementById('luma-fixes-applied-list')) return;
+    load();
+    _fixesPollTimer = setTimeout(pollFixes, 3000);
+  }
+  _fixesPollTimer = setTimeout(pollFixes, 3000);
 }
 
 // ---------------------------------------------------------------------------
