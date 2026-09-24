@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
 import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
-import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl } from '../ui/helpers';
+import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
 import { openDepotModal, restartSteam } from '../modals/depot';
@@ -15,6 +15,8 @@ var LUMA_VERSION = '2.6.0';
 var _downloadsPollTimer: ReturnType<typeof setTimeout> | null = null;
 var _downloadsPollSeq = 0;
 var _shownDepotCompletions: Record<string, boolean> = {};
+var _toolsPollTimer: ReturnType<typeof setTimeout> | null = null;
+var _toolsPollSeq = 0;
 
 function showSteamRestartDialog(appId: string, gameName: string): void {
   var overlay = document.createElement('div');
@@ -84,6 +86,7 @@ function closeSidebar() {
   if (panel) panel.remove();
   if (backdrop) backdrop.remove();
   stopDownloadsPoll();
+  stopToolsPoll();
   state.sidebarOpen = false;
   saveSessionState();
   // Show floating settings button again
@@ -110,6 +113,7 @@ function renderTabContent(tabId: string) {
   var content = panel.querySelector('.luma-sidebar-content');
   if (!content) return;
   (content as HTMLElement).innerHTML = '<div style="text-align:center;padding:40px;color:#8f98a0;">Loading...</div>';
+  if (tabId !== 'tools') stopToolsPoll();
 
   switch (tabId) {
     case 'dashboard': renderDashboardTab(content as HTMLElement); break;
@@ -929,15 +933,22 @@ function resumeDepotDownload(queueId: string) {
 // ---------------------------------------------------------------------------
 // Tools tab
 // ---------------------------------------------------------------------------
+function stopToolsPoll() {
+  _toolsPollSeq++;
+  if (_toolsPollTimer) {
+    clearTimeout(_toolsPollTimer);
+    _toolsPollTimer = null;
+  }
+}
+
 function renderToolsTab(container: HTMLElement) {
-  var html = '';
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">DepotDownloader</div>';
-  html += '<div class="luma-stat-card"><div class="luma-stat-icon green">' + svgBox() + '</div><div><div style="font-size:13px;font-weight:600;color:#fff;">Available</div><div style="font-size:11px;color:#8f98a0;">For content downloads</div></div></div>';
+  stopToolsPoll();
+  var seq = ++_toolsPollSeq;
+
+  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Third-Party Tools</div>';
+  html += '<div id="luma-tools-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' Loading tools…</div></div>';
   html += '</div>';
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">SLS Steam</div>';
-  html += '<div class="luma-stat-card"><div class="luma-stat-icon orange">' + svgRefresh() + '</div><div><div style="font-size:13px;font-weight:600;color:#fff;">Check Status</div><div style="font-size:11px;color:#8f98a0;">Steam library integration</div></div></div>';
-  html += '</div>';
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Steam Integration</div>';
+  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">Steam Integration</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
   html += '<button class="luma-sidebar-btn secondary" id="luma-tools-restart-steam">Restart Steam</button>';
   html += '</div></div>';
@@ -965,6 +976,136 @@ function renderToolsTab(container: HTMLElement) {
         });
     });
   }
+
+  var listEl = document.getElementById('luma-tools-list');
+
+  function badge(label: string, bg: string, color: string): string {
+    return '<span style="padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:' + bg + ';color:' + color + ';">' + esc(label) + '</span>';
+  }
+
+  function renderToolRows(tools: any[]) {
+    if (seq !== _toolsPollSeq) return;
+    if (!listEl || !document.getElementById('luma-tools-list')) return;
+
+    if (!tools || tools.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8f98a0;">No tools available</div>';
+      return;
+    }
+
+    var rows = '';
+    for (var i = 0; i < tools.length; i++) {
+      var t = tools[i];
+      var job = t.job || null;
+      var busy = job && (job.status === 'running' || job.status === 'restarting');
+      var jobError = job && job.status === 'error';
+
+      rows += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;" data-tool="' + esc(t.id) + '">';
+
+      // Header: name + badges
+      rows += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
+      rows += '<div style="min-width:0;">';
+      rows += '<div style="font-size:13px;font-weight:600;color:#fff;">' + esc(t.name) + '</div>';
+      rows += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.description || '') + '</div>';
+      rows += '</div>';
+      rows += '<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
+      if (!t.available) {
+        rows += badge(t.platform === 'windows' ? 'Windows only' : 'Linux only', 'rgba(255,255,255,.06)', '#8f98a0');
+      } else {
+        if (t.installed) {
+          rows += badge(t.installedVersion ? 'Installed v' + t.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
+        }
+        if (t.updateAvailable && t.latestVersion) {
+          rows += badge('Update → ' + t.latestVersion, 'rgba(102,192,255,.15)', '#66c0ff');
+        }
+        if (busy) {
+          rows += badge(job.status === 'restarting' ? 'Restarting…' : (job.op + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
+        }
+      }
+      rows += '</div>';
+      rows += '</div>';
+
+      // Job message / error
+      if (jobError && job.message) {
+        rows += '<div style="font-size:10px;color:#e74c3c;">' + esc(job.message) + '</div>';
+      } else if (busy && job.message) {
+        rows += '<div style="font-size:10px;color:#fbbf24;">' + esc(job.message) + '</div>';
+        if (job.status === 'running') {
+          var pct = Math.max(0, Math.min(100, job.progress || 0));
+          rows += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;">';
+          rows += '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#66c0ff,#67e8f9);border-radius:2px;transition:width .3s;"></div>';
+          rows += '</div>';
+        }
+      }
+
+      // Buttons
+      if (t.available) {
+        rows += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        if (!t.installed) {
+          rows += '<button class="luma-sidebar-btn primary" data-tool-action="install" data-tool-id="' + esc(t.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Install</button>';
+        } else {
+          if (t.updateAvailable) {
+            rows += '<button class="luma-sidebar-btn primary" data-tool-action="update" data-tool-id="' + esc(t.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Update</button>';
+          }
+          rows += '<button class="luma-sidebar-btn secondary" data-tool-action="uninstall" data-tool-id="' + esc(t.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Uninstall</button>';
+        }
+        rows += '</div>';
+      }
+
+      rows += '</div>';
+    }
+
+    listEl.innerHTML = rows;
+
+    var buttons = listEl.querySelectorAll('[data-tool-action]');
+    for (var b = 0; b < buttons.length; b++) {
+      buttons[b].addEventListener('click', function(this: HTMLElement) {
+        var action = this.getAttribute('data-tool-action') || '';
+        var id = this.getAttribute('data-tool-id') || '';
+        if (!id || !action) return;
+        this.setAttribute('disabled', 'true');
+        (this as HTMLElement).style.opacity = '0.5';
+        var url = action === 'install' ? toolInstallUrl(id)
+          : action === 'update' ? toolUpdateUrl(id)
+          : toolUninstallUrl(id);
+        fetch(url, { method: 'POST', mode: 'cors', cache: 'no-store' })
+          .then(function(r) { return r.json(); })
+          .then(function() { /* list poll picks up job status */ })
+          .catch(function() {
+            renderTools();
+          });
+      });
+    }
+  }
+
+  function renderTools() {
+    if (seq !== _toolsPollSeq) return;
+    fetch(toolsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (seq !== _toolsPollSeq) return;
+        if (data && data.ok) renderToolRows(data.tools || []);
+      })
+      .catch(function() {
+        if (seq !== _toolsPollSeq) return;
+        if (listEl) {
+          listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#e74c3c;">' +
+            '<div style="margin-bottom:8px;">' + svgErrorCircle() + '</div>' +
+            '<div style="font-size:12px;">Bridge not available</div>' +
+            '<div style="font-size:10px;color:#8f98a0;margin-top:4px;">Make sure the CDP proxy is running</div>' +
+            '</div>';
+        }
+      });
+  }
+
+  renderTools();
+
+  function pollTools() {
+    if (seq !== _toolsPollSeq) return;
+    if (!document.getElementById('luma-tools-list')) return;
+    renderTools();
+    _toolsPollTimer = setTimeout(pollTools, 1500);
+  }
+  _toolsPollTimer = setTimeout(pollTools, 1500);
 }
 
 // ---------------------------------------------------------------------------

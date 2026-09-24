@@ -262,6 +262,22 @@ export function providerStatsUrl(): string {
   return bridgeUrl('/api/provider-stats');
 }
 
+export function toolsUrl(): string {
+  return bridgeUrl('/api/tools');
+}
+
+export function toolInstallUrl(id: string): string {
+  return bridgeUrl('/api/tools/' + id + '/install');
+}
+
+export function toolUpdateUrl(id: string): string {
+  return bridgeUrl('/api/tools/' + id + '/update');
+}
+
+export function toolUninstallUrl(id: string): string {
+  return bridgeUrl('/api/tools/' + id + '/uninstall');
+}
+
 export function getModalBody(): Element | null {
   return document.querySelector(
     '[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] [data-lumaforge-modal-body="true"]'
