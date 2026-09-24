@@ -302,6 +302,18 @@ export function fixesCatalogUrl(): string {
   return bridgeUrl('/api/fixes/catalog');
 }
 
+export function steamAccountUrl(): string {
+  return bridgeUrl('/api/steam-account');
+}
+
+export function steamAccountDetectUrl(): string {
+  return bridgeUrl('/api/steam-account/detect');
+}
+
+export function openUrlApi(): string {
+  return bridgeUrl('/api/open-url');
+}
+
 export function getModalBody(): Element | null {
   return document.querySelector(
     '[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] [data-lumaforge-modal-body="true"]'

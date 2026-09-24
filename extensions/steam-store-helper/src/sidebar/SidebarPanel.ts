@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
 import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
-import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl } from '../ui/helpers';
+import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
 import { openDepotModal, restartSteam } from '../modals/depot';
@@ -1282,6 +1282,32 @@ function renderFixesTab(container: HTMLElement) {
 // ---------------------------------------------------------------------------
 function renderSettingsTab(container: HTMLElement) {
   var html = '';
+
+  // ── Steam Account ──
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Steam Account</div>';
+  html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">Steam Web API Key <span style="color:#66c0ff;">(Goldberg achievements)</span></div>';
+  html += '<div style="display:flex;gap:6px;margin-bottom:6px;">';
+  html += '<input id="luma-steam-apikey" type="password" placeholder="Enter your Steam Web API key" style="flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;" />';
+  html += '<button type="button" id="luma-steam-apikey-eye" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#8f98a0;font-size:11px;padding:0 10px;cursor:pointer;">Show</button>';
+  html += '</div>';
+  html += '<button type="button" id="luma-steam-getkey" style="background:rgba(102,192,255,.1);border:1px solid rgba(102,192,255,.3);border-radius:6px;color:#66c0ff;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">Get API key \u2197</button>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin:10px 0 4px;">SteamID64 <span style="color:#66c0ff;">(Voices38 / catalog fixes)</span></div>';
+  html += '<input id="luma-steam-id64" type="text" placeholder="76561197960265728" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:8px;" />';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">SteamID32 (Account ID)</div>';
+  html += '<input id="luma-steam-id32" type="text" placeholder="12345678" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:10px;" />';
+  html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
+  html += '<button type="button" id="luma-steam-detect" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">Detect Steam account</button>';
+  html += '<span id="luma-steam-acct" style="font-size:10px;color:#8f98a0;"></span>';
+  html += '</div>';
+  html += '<div id="luma-steam-accounts" style="margin-bottom:8px;"></div>';
+  html += '<div style="display:flex;gap:8px;align-items:center;">';
+  html += '<button type="button" id="luma-steam-save" style="background:rgba(46,160,67,.15);border:1px solid rgba(46,160,67,.4);border-radius:6px;color:#64c882;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">Save</button>';
+  html += '<span id="luma-steam-status" style="font-size:11px;color:#64c882;"></span>';
+  html += '</div>';
+  html += '</div></div>';
+
+  // ── About ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">About</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Steam Store Helper</div>';
@@ -1296,6 +1322,146 @@ function renderSettingsTab(container: HTMLElement) {
   html += '<div><kbd style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:10px;">Esc</kbd> Close sidebar</div>';
   html += '</div></div></div>';
   container.innerHTML = html;
+  wireSteamAccountSection(container);
+}
+
+function wireSteamAccountSection(container: HTMLElement) {
+  var apiKeyInput = container.querySelector('#luma-steam-apikey') as HTMLInputElement;
+  var eyeBtn = container.querySelector('#luma-steam-apikey-eye') as HTMLButtonElement;
+  var getkeyBtn = container.querySelector('#luma-steam-getkey') as HTMLButtonElement;
+  var id64Input = container.querySelector('#luma-steam-id64') as HTMLInputElement;
+  var id32Input = container.querySelector('#luma-steam-id32') as HTMLInputElement;
+  var detectBtn = container.querySelector('#luma-steam-detect') as HTMLButtonElement;
+  var acctEl = container.querySelector('#luma-steam-acct') as HTMLElement;
+  var accountsEl = container.querySelector('#luma-steam-accounts') as HTMLElement;
+  var saveBtn = container.querySelector('#luma-steam-save') as HTMLButtonElement;
+  var statusEl = container.querySelector('#luma-steam-status') as HTMLElement;
+  if (!apiKeyInput || !id64Input || !id32Input || !saveBtn) return;
+  var accountName = '';
+
+  // Load saved values
+  fetch(steamAccountUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data.ok) return;
+      apiKeyInput.value = data.apiKey || '';
+      id64Input.value = data.steamId64 || '';
+      id32Input.value = data.steamId32 || '';
+      accountName = data.accountName || '';
+      if (accountName) {
+        acctEl.textContent = 'Account: ' + accountName;
+        acctEl.style.color = '#64c882';
+      }
+    })
+    .catch(function() {});
+
+  if (eyeBtn) {
+    eyeBtn.addEventListener('click', function() {
+      var show = apiKeyInput.type === 'password';
+      apiKeyInput.type = show ? 'text' : 'password';
+      eyeBtn.textContent = show ? 'Hide' : 'Show';
+    });
+  }
+
+  if (getkeyBtn) {
+    getkeyBtn.addEventListener('click', function() {
+      statusEl.textContent = 'Opening\u2026';
+      statusEl.style.color = '#66c0ff';
+      retryFetch(openUrlApi(), {
+        method: 'POST',
+        mode: 'cors',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: 'https://steamcommunity.com/dev/apikey' })
+      }, 'open-apikey', {})
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          statusEl.textContent = data.ok ? 'Opening steamcommunity.com\u2026' : (data.message || 'Failed');
+          statusEl.style.color = data.ok ? '#64c882' : '#ff6e6e';
+        })
+        .catch(function() {
+          statusEl.textContent = 'Failed to open URL';
+          statusEl.style.color = '#ff6e6e';
+        });
+    });
+  }
+
+  if (detectBtn) {
+    detectBtn.addEventListener('click', function() {
+      accountsEl.innerHTML = '<div style="font-size:11px;color:#66c0ff;">Scanning loginusers.vdf\u2026</div>';
+      fetch(steamAccountDetectUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (!data.ok) {
+            accountsEl.innerHTML = '<div style="font-size:11px;color:#ff6e6e;">' + esc(data.message || 'Detect failed') + '</div>';
+            return;
+          }
+          var accounts = data.accounts || [];
+          if (!accounts.length) {
+            accountsEl.innerHTML = '<div style="font-size:11px;color:#8f98a0;">No accounts found in loginusers.vdf</div>';
+            return;
+          }
+          var h = '';
+          for (var i = 0; i < accounts.length; i++) {
+            var a = accounts[i];
+            h += '<button type="button" data-acct-idx="' + i + '" style="display:block;width:100%;text-align:left;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:7px 9px;margin-bottom:5px;cursor:pointer;">';
+            h += '<div style="font-size:12px;font-weight:600;color:#fff;">' + esc(a.personaName || a.accountName || a.steamId64) + '</div>';
+            h += '<div style="font-size:10px;color:#8f98a0;">' + esc(a.accountName || '') + ' \u00b7 ' + esc(a.steamId64 || '') + ' \u00b7 ID32 ' + esc(a.steamId32 || '') + '</div>';
+            h += '</button>';
+          }
+          accountsEl.innerHTML = h;
+          var btns = accountsEl.querySelectorAll('[data-acct-idx]');
+          for (var j = 0; j < btns.length; j++) {
+            (function(btn) {
+              btn.addEventListener('click', function() {
+                var idx = parseInt(btn.getAttribute('data-acct-idx') || '0', 10);
+                var acc = accounts[idx];
+                if (!acc) return;
+                id64Input.value = acc.steamId64 || '';
+                id32Input.value = acc.steamId32 || '';
+                accountName = acc.accountName || '';
+                acctEl.textContent = 'Account: ' + (accountName || '\u2014');
+                acctEl.style.color = '#64c882';
+              });
+            })(btns[j] as HTMLElement);
+          }
+        })
+        .catch(function() {
+          accountsEl.innerHTML = '<div style="font-size:11px;color:#ff6e6e;">Detect failed</div>';
+        });
+    });
+  }
+
+  saveBtn.addEventListener('click', function() {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving\u2026';
+    retryFetch(steamAccountUrl(), {
+      method: 'POST',
+      mode: 'cors',
+      cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: apiKeyInput.value.trim(),
+        steamId64: id64Input.value.trim(),
+        steamId32: id32Input.value.trim(),
+        accountName: accountName
+      })
+    }, 'steam-account-save', {})
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = data.ok ? '\u2713 Saved' : 'Save';
+        statusEl.textContent = data.ok ? '' : (data.message || 'Error');
+        statusEl.style.color = data.ok ? '#64c882' : '#ff6e6e';
+        if (data.ok) setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
+      })
+      .catch(function() {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        statusEl.textContent = 'Save failed';
+        statusEl.style.color = '#ff6e6e';
+      });
+  });
 }
 
 // ---------------------------------------------------------------------------
