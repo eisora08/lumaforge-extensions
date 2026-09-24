@@ -1297,7 +1297,23 @@ local function poll_download_status(request_id, max_wait_secs)
     return false, "TIMEOUT"
 end
 
-spawn_thread(function()
+-- Auto-update is opt-in: requires "autoUpdate": { "enabled": true } in config.json
+local function is_auto_update_enabled()
+    local config_path = get_config_path()
+    local raw = config_path ~= "" and file_exists(config_path) and read_file(config_path) or nil
+    if not raw then
+        return false
+    end
+    local ok, config = pcall(json_decode, raw)
+    if not ok or not config then
+        return false
+    end
+    local au = config.autoUpdate
+    return type(au) == "table" and au.enabled == true
+end
+
+if is_auto_update_enabled() then
+    spawn_thread(function()
     local ok, err = pcall(function()
     sleep_ms(2000)
     log("[auto-update] ============================================================")
@@ -1455,3 +1471,6 @@ spawn_thread(function()
         log("[auto-update] FATAL: " .. tostring(err))
     end
 end)
+else
+    log("[auto-update] Disabled (config.autoUpdate.enabled ~= true)")
+end
