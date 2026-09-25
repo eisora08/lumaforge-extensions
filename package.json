@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
+    "postbuild": "node -e \"require('fs').copyFileSync('extensions/steam-store-helper/dist/inject.js','extensions/steam-store-helper/inject.js')\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

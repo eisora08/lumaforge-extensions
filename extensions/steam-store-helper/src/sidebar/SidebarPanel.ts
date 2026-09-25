@@ -1386,6 +1386,7 @@ function renderToolsTab(container: HTMLElement) {
     var rows = '';
     for (var i = 0; i < tools.length; i++) {
       var t = tools[i];
+      if (!t.available) continue;
       var job = t.job || null;
       var busy = job && (job.status === 'running' || job.status === 'restarting');
       var jobError = job && job.status === 'error';
@@ -1399,18 +1400,14 @@ function renderToolsTab(container: HTMLElement) {
       rows += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.description || '') + '</div>';
       rows += '</div>';
       rows += '<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
-      if (!t.available) {
-        rows += badge(t.platform === 'windows' ? 'Windows only' : 'Linux only', 'rgba(255,255,255,.06)', '#8f98a0');
-      } else {
-        if (t.installed) {
-          rows += badge(t.installedVersion ? 'Installed v' + t.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
-        }
-        if (t.updateAvailable && t.latestVersion) {
-          rows += badge('Update → ' + t.latestVersion, 'rgba(102,192,255,.15)', '#66c0ff');
-        }
-        if (busy) {
-          rows += badge(job.status === 'restarting' ? 'Restarting…' : (job.op + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
-        }
+      if (t.installed) {
+        rows += badge(t.installedVersion ? 'Installed v' + t.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
+      }
+      if (t.updateAvailable && t.latestVersion) {
+        rows += badge('Update → ' + t.latestVersion, 'rgba(102,192,255,.15)', '#66c0ff');
+      }
+      if (busy) {
+        rows += badge(job.status === 'restarting' ? 'Restarting…' : (job.op + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
       }
       rows += '</div>';
       rows += '</div>';
