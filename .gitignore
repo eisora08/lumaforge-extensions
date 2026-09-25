@@ -1,5 +1,4 @@
 node_modules/
-package-lock.json
 extensions/steam-store-helper/inject.js
 extensions/steam-store-helper/dist/
 extensions/steam-store-helper/inject.js.original
