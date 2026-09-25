@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
 import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
-import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl } from '../ui/helpers';
+import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl, cloudSaveStatusUrl, cloudSaveAppsUrl, cloudSaveLoginUrl, cloudSaveSaveProviderUrl, cloudSaveLogoutUrl, cloudSaveStatsSyncUrl, cloudSaveAppDeleteUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
 import { openDepotModal, restartSteam } from '../modals/depot';
@@ -27,6 +27,15 @@ var _luaFiles: any[] = [];
 var _luaPins: any = {};
 var _luaQuery = '';
 var _luaSort = 'name-asc';
+
+// Cloud Saves tab state (persists across tab switches)
+var _cloudsavePollTimer: ReturnType<typeof setTimeout> | null = null;
+var _cloudsavePollSeq = 0;
+var _cloudsaveStatus: any = null;
+var _cloudsaveApps: any[] = [];
+var _cloudsaveQuery = '';
+var _cloudsaveProviderSel = '';
+var _cloudsaveSelectTouched = false;
 
 function showSteamRestartDialog(appId: string, gameName: string): void {
   var overlay = document.createElement('div');
@@ -87,6 +96,7 @@ var TABS = [
   { id: 'providers', label: 'Providers' },
   { id: 'downloads', label: 'Downloads' },
   { id: 'tools', label: 'Tools' },
+  { id: 'cloudsave', label: 'Cloud Saves' },
   { id: 'fixes', label: 'Fixes' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -100,6 +110,7 @@ function closeSidebar() {
   stopDashPoll();
   stopToolsPoll();
   stopFixesPoll();
+  stopCloudsavePoll();
   state.sidebarOpen = false;
   saveSessionState();
   // Show floating settings button again
@@ -129,12 +140,14 @@ function renderTabContent(tabId: string) {
   if (tabId !== 'tools') stopToolsPoll();
   if (tabId !== 'fixes') stopFixesPoll();
   if (tabId !== 'dashboard') stopDashPoll();
+  if (tabId !== 'cloudsave') stopCloudsavePoll();
 
   switch (tabId) {
     case 'dashboard': renderDashboardTab(content as HTMLElement); break;
     case 'providers': renderProvidersTab(content as HTMLElement); break;
     case 'downloads': renderDownloadsTab(content as HTMLElement); break;
     case 'tools': renderToolsTab(content as HTMLElement); break;
+    case 'cloudsave': renderCloudsaveTab(content as HTMLElement); break;
     case 'fixes': renderFixesTab(content as HTMLElement); break;
     case 'settings': renderSettingsTab(content as HTMLElement); break;
   }
@@ -1762,6 +1775,588 @@ function wireSteamAccountSection(container: HTMLElement) {
 }
 
 // ---------------------------------------------------------------------------
+// Cloud Saves tab — CloudRedirect provider status, OAuth login, synced games
+// ---------------------------------------------------------------------------
+function stopCloudsavePoll() {
+  _cloudsavePollSeq++;
+  if (_cloudsavePollTimer) {
+    clearTimeout(_cloudsavePollTimer);
+    _cloudsavePollTimer = null;
+  }
+}
+
+function cloudSaveShowMsg(text: string, ok: boolean): void {
+  var el = document.getElementById('luma-cs-msg');
+  if (!el) return;
+  el.style.display = '';
+  el.textContent = text;
+  el.style.color = ok ? '#64c882' : '#ff6e6e';
+}
+
+function cloudSavePost(url: string, body: any, cb?: (d: any) => void): void {
+  fetch(url, {
+    method: 'POST',
+    mode: 'cors',
+    cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) { if (cb) cb(d); })
+    .catch(function() { if (cb) cb(null); });
+}
+
+function cloudSaveField(id: string, label: string, type?: string, placeholder?: string): string {
+  return '<div style="margin-bottom:6px;">' +
+    '<div style="font-size:10px;color:#8f98a0;margin-bottom:3px;">' + esc(label) + '</div>' +
+    '<input id="' + id + '" type="' + (type || 'text') + '" placeholder="' + esc(placeholder || '') + '" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;color:#fff;font-size:11px;outline:none;" /></div>';
+}
+
+var CS_PROVIDER_NAMES: Record<string, string> = {
+  gdrive: 'Google Drive',
+  onedrive: 'OneDrive',
+  r2: 'Cloudflare R2',
+  s3: 'S3-Compatible',
+  folder: 'Local Folder',
+};
+
+function cloudSaveCurrentProvider(): string {
+  if (_cloudsaveProviderSel) return _cloudsaveProviderSel;
+  if (_cloudsaveStatus && _cloudsaveStatus.provider) return _cloudsaveStatus.provider;
+  return 'gdrive';
+}
+
+function showCloudSavePane(): void {
+  var prov = cloudSaveCurrentProvider();
+  var paneIds = ['luma-cs-pane-oauth', 'luma-cs-pane-r2', 'luma-cs-pane-s3', 'luma-cs-pane-folder'];
+  var target = (prov === 'gdrive' || prov === 'onedrive') ? 'luma-cs-pane-oauth' : 'luma-cs-pane-' + prov;
+  for (var i = 0; i < paneIds.length; i++) {
+    var el = document.getElementById(paneIds[i]);
+    if (el) el.style.display = paneIds[i] === target ? '' : 'none';
+  }
+  var loginBtn = document.getElementById('luma-cs-login');
+  if (loginBtn) loginBtn.textContent = (prov === 'onedrive' ? 'Sign in with Microsoft' : 'Sign in with Google');
+  var useBtn = document.getElementById('luma-cs-use') as HTMLElement | null;
+  if (useBtn) {
+    var tokens = (_cloudsaveStatus && _cloudsaveStatus.tokensAvailable) || {};
+    var active = _cloudsaveStatus ? _cloudsaveStatus.provider : '';
+    var show = !!tokens[prov] && active !== prov;
+    useBtn.style.display = show ? '' : 'none';
+    if (show) useBtn.textContent = 'Use ' + (CS_PROVIDER_NAMES[prov] || prov);
+  }
+}
+
+function applyCloudSaveStatus(s: any): void {
+  if (!s || !s.ok) return;
+  _cloudsaveStatus = s;
+  if (!document.getElementById('luma-cs-list')) return;
+
+  var ni = document.getElementById('luma-cs-notinstalled');
+  var ins = document.getElementById('luma-cs-installed');
+  if (ni && ins) {
+    ni.style.display = s.installed ? 'none' : '';
+    ins.style.display = s.installed ? '' : 'none';
+  }
+
+  var provName = CS_PROVIDER_NAMES[s.provider] || '';
+  var pl = document.getElementById('luma-cs-provider-line');
+  if (pl) {
+    if (!s.provider) pl.textContent = 'No provider configured';
+    else if (s.provider === 'folder') pl.textContent = s.syncPath || 'Local folder';
+    else pl.textContent = provName + (s.loggedIn ? ' \u00b7 ' + (s.accountId || '') : ' \u00b7 not signed in');
+  }
+
+  var badge = document.getElementById('luma-cs-signed-badge');
+  if (badge) {
+    if (s.loggedIn) {
+      badge.textContent = s.appsSynced + ' game' + (s.appsSynced === 1 ? '' : 's');
+      badge.style.background = 'rgba(100,200,130,.15)';
+      badge.style.color = '#64c882';
+    } else {
+      badge.textContent = 'Signed out';
+      badge.style.background = 'rgba(255,255,255,.06)';
+      badge.style.color = '#8f98a0';
+    }
+  }
+
+  var lo = document.getElementById('luma-cs-logout');
+  if (lo) lo.style.display = (s.provider && s.provider !== 'folder' && s.loggedIn) ? '' : 'none';
+
+  var sel = document.getElementById('luma-cs-provider') as HTMLSelectElement | null;
+  if (sel && !_cloudsaveSelectTouched && provName) {
+    sel.value = s.provider;
+    _cloudsaveProviderSel = s.provider;
+  }
+
+  var folderInput = document.getElementById('luma-cs-folder-path') as HTMLInputElement | null;
+  if (folderInput && s.provider === 'folder' && document.activeElement !== folderInput) {
+    folderInput.value = s.syncPath || '';
+  }
+
+  showCloudSavePane();
+
+  var logEl = document.getElementById('luma-cs-authlog');
+  if (logEl) {
+    var auth = s.auth || {};
+    var lines = auth.log || [];
+    if (lines.length > 0) {
+      logEl.style.display = '';
+      logEl.textContent = lines.join('\n');
+      if (auth.state === 'running') logEl.scrollTop = logEl.scrollHeight;
+    } else {
+      logEl.style.display = 'none';
+    }
+    var loginBtn = document.getElementById('luma-cs-login') as HTMLElement | null;
+    if (loginBtn) {
+      if (auth.state === 'running') {
+        loginBtn.setAttribute('disabled', 'true');
+        loginBtn.style.opacity = '0.5';
+        loginBtn.textContent = 'Waiting for browser\u2026';
+      } else {
+        loginBtn.removeAttribute('disabled');
+        loginBtn.style.opacity = '';
+        showCloudSavePane();
+      }
+    }
+  }
+
+  var tgAch = document.getElementById('luma-cs-tg-ach');
+  if (tgAch) tgAch.classList.toggle('on', !!(s.statsSync && s.statsSync.achievements));
+  var tgPt = document.getElementById('luma-cs-tg-pt');
+  if (tgPt) tgPt.classList.toggle('on', !!(s.statsSync && s.statsSync.playtime));
+
+  var countEl = document.getElementById('luma-cs-count');
+  if (countEl) countEl.textContent = s.installed ? (s.appsSynced + ' game' + (s.appsSynced === 1 ? '' : 's')) : '';
+}
+
+function loadCloudSaveStatus(): void {
+  fetch(cloudSaveStatusUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(s) {
+      if (document.getElementById('luma-cs-list')) applyCloudSaveStatus(s);
+    })
+    .catch(function() { });
+}
+
+function paintCloudSaveGames(): void {
+  var listEl = document.getElementById('luma-cs-list');
+  if (!listEl) return;
+
+  var q = _cloudsaveQuery.trim().toLowerCase();
+  var files = _cloudsaveApps.slice();
+  if (q) {
+    files = files.filter(function(f: any) {
+      return String(f.name || '').toLowerCase().indexOf(q) !== -1 ||
+             String(f.appId || '').indexOf(q) !== -1;
+    });
+  }
+  files.sort(function(a: any, b: any) {
+    var an = String(a.name || 'App ' + a.appId).toLowerCase();
+    var bn = String(b.name || 'App ' + b.appId).toLowerCase();
+    if (an < bn) return -1;
+    if (an > bn) return 1;
+    return 0;
+  });
+
+  if (files.length === 0) {
+    listEl.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">' +
+      (_cloudsaveApps.length === 0 ? 'No synced games yet' : 'No matches') + '</div>';
+    return;
+  }
+
+  var h = '';
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    h += '<div class="luma-stat-card" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
+    h += '<div style="flex:1;min-width:0;">';
+    h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
+    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">';
+    h += 'CN ' + esc(String(f.cn || '0')) + ' \u00b7 ' + (f.fileCount || 0) + ' file' + ((f.fileCount || 0) === 1 ? '' : 's') +
+         ' \u00b7 ' + formatBytes(f.sizeBytes || 0) + (f.modified ? ' \u00b7 ' + formatTimeAgo(f.modified) : '');
+    h += '</div></div>';
+    h += '<button class="luma-sidebar-btn secondary" data-cs-delete="' + esc(String(f.appId)) + '" data-cs-name="' + esc(f.name || '') + '" style="padding:3px 8px;font-size:10px;flex-shrink:0;">Delete</button>';
+    h += '</div>';
+  }
+  listEl.innerHTML = h;
+}
+
+function loadCloudSaveApps(): void {
+  fetch(cloudSaveAppsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!document.getElementById('luma-cs-list')) return;
+      _cloudsaveApps = (data && data.ok && data.files) ? data.files : [];
+      paintCloudSaveGames();
+    })
+    .catch(function() {
+      if (document.getElementById('luma-cs-list')) {
+        _cloudsaveApps = [];
+        paintCloudSaveGames();
+      }
+    });
+}
+
+function renderCloudsaveTab(container: HTMLElement) {
+  stopCloudsavePoll();
+  var seq = ++_cloudsavePollSeq;
+  _cloudsaveProviderSel = '';
+  _cloudsaveSelectTouched = false;
+
+  var html = '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">';
+  html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;">';
+  html += '<div class="luma-sidebar-section-title" style="flex-shrink:0;">Cloud Saves</div>';
+
+  // Not installed
+  html += '<div id="luma-cs-notinstalled" style="display:none;">';
+  html += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;">';
+  html += '<div style="font-size:13px;font-weight:600;color:#fff;">Cloud Redirect is not installed</div>';
+  html += '<div style="font-size:10px;color:#8f98a0;">Cloud save sync runs inside Steam through the Cloud Redirect DLL. Install it to back up your saves to the cloud.</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;"><button class="luma-sidebar-btn primary" id="luma-cs-install">Install Cloud Redirect</button>';
+  html += '<span id="luma-cs-install-status" style="font-size:10px;color:#8f98a0;"></span></div>';
+  html += '</div></div>';
+
+  // Installed
+  html += '<div id="luma-cs-installed" style="display:none;">';
+
+  // Provider card
+  html += '<div class="luma-stat-card" style="margin-top:2px;"><div class="luma-stat-icon blue">' + svgBox() + '</div>';
+  html += '<div style="flex:1;min-width:0;">';
+  html += '<div style="font-size:12px;font-weight:600;color:#fff;">Cloud Redirect</div>';
+  html += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" id="luma-cs-provider-line">\u2014</div>';
+  html += '</div>';
+  html += '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">';
+  html += '<span id="luma-cs-signed-badge" style="padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:rgba(255,255,255,.06);color:#8f98a0;">\u2014</span>';
+  html += '<button class="luma-sidebar-btn secondary" id="luma-cs-logout" style="display:none;padding:3px 8px;font-size:10px;">Sign out</button>';
+  html += '</div></div>';
+
+  // Provider selector + panes
+  html += '<div style="margin-top:10px;">';
+  html += '<div style="font-size:10px;color:#8f98a0;margin-bottom:4px;">Storage provider</div>';
+  html += '<select id="luma-cs-provider" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 8px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;margin-bottom:8px;">';
+  html += '<option value="gdrive">Google Drive</option>';
+  html += '<option value="onedrive">Microsoft OneDrive</option>';
+  html += '<option value="r2">Cloudflare R2 (S3)</option>';
+  html += '<option value="s3">S3-Compatible</option>';
+  html += '<option value="folder">Local Folder</option>';
+  html += '</select>';
+
+  html += '<div id="luma-cs-pane-oauth" style="display:none;">';
+  html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-login">Sign in with Google</button>';
+  html += '<button class="luma-sidebar-btn secondary" id="luma-cs-use" style="display:none;"></button>';
+  html += '</div>';
+  html += '<div id="luma-cs-authlog" style="display:none;margin-top:8px;max-height:110px;overflow-y:auto;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:6px 8px;font-size:9px;line-height:1.5;color:#8f98a0;font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-word;"></div>';
+  html += '</div>';
+
+  html += '<div id="luma-cs-pane-r2" style="display:none;">';
+  html += cloudSaveField('luma-cs-r2-account', 'Account ID', 'text', 'abc123\u2026');
+  html += cloudSaveField('luma-cs-r2-keyid', 'Access Key ID', 'text', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-r2-secret', 'Secret Access Key', 'password', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-r2-bucket', 'Bucket', 'text', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-r2-prefix', 'Key Prefix (optional)', 'text', '');
+  html += cloudSaveField('luma-cs-r2-endpoint', 'Endpoint (optional)', 'text', '');
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-r2">Save R2</button>';
+  html += '</div>';
+
+  html += '<div id="luma-cs-pane-s3" style="display:none;">';
+  html += cloudSaveField('luma-cs-s3-keyid', 'Access Key ID', 'text', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-s3-secret', 'Secret Access Key', 'password', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-s3-bucket', 'Bucket', 'text', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-s3-endpoint', 'Endpoint', 'text', 'Saved \u2014 leave blank to keep');
+  html += cloudSaveField('luma-cs-s3-region', 'Region', 'text', 'auto');
+  html += cloudSaveField('luma-cs-s3-prefix', 'Key Prefix (optional)', 'text', '');
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-s3">Save S3</button>';
+  html += '</div>';
+
+  html += '<div id="luma-cs-pane-folder" style="display:none;">';
+  html += cloudSaveField('luma-cs-folder-path', 'Folder path', 'text', 'D:\\CloudSaves');
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-folder">Save Folder</button>';
+  html += '</div>';
+
+  html += '<div id="luma-cs-msg" style="display:none;margin-top:6px;font-size:10px;"></div>';
+  html += '</div>';
+
+  // Stats sync
+  html += '<div style="margin-top:12px;">';
+  html += '<div class="luma-sidebar-section-title">Stats Sync</div>';
+  html += '<div class="luma-provider-row" style="padding:8px 10px;margin-bottom:6px;"><div style="flex:1;min-width:0;">';
+  html += '<div style="font-size:11px;color:#c7d5e0;">Achievements</div>';
+  html += '<div style="font-size:9px;color:#8f98a0;">Sync achievement progress with the cloud</div>';
+  html += '</div><button class="luma-toggle" id="luma-cs-tg-ach"></button></div>';
+  html += '<div class="luma-provider-row" style="padding:8px 10px;"><div style="flex:1;min-width:0;">';
+  html += '<div style="font-size:11px;color:#c7d5e0;">Playtime</div>';
+  html += '<div style="font-size:9px;color:#8f98a0;">Sync playtime counters with the cloud</div>';
+  html += '</div><button class="luma-toggle" id="luma-cs-tg-pt"></button></div>';
+  html += '<div style="font-size:9px;color:#8f98a0;">Changes apply after restarting Steam.</div>';
+  html += '</div>';
+
+  // Synced games
+  html += '<div style="margin-top:12px;flex:1;display:flex;flex-direction:column;min-height:0;">';
+  html += '<div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><span>Synced Games</span><span id="luma-cs-count" style="font-size:10px;color:#8f98a0;font-weight:400;"></span></div>';
+  html += '<input id="luma-cs-search" type="text" placeholder="Search\u2026" value="' + esc(_cloudsaveQuery) + '" style="flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;margin-bottom:8px;" />';
+  html += '<div id="luma-cs-list" style="flex:1;min-height:0;overflow-y:auto;padding-right:4px;"><div style="font-size:11px;color:#8f98a0;padding:8px 0;">Loading\u2026</div></div>';
+  html += '</div>';
+
+  html += '</div>'; // installed
+  html += '</div>'; // section
+  html += '</div>'; // root
+  container.innerHTML = html;
+
+  // --- Bindings ---
+  var installBtn = document.getElementById('luma-cs-install');
+  if (installBtn) {
+    installBtn.addEventListener('click', function() {
+      installBtn.setAttribute('disabled', 'true');
+      installBtn.style.opacity = '0.5';
+      var st = document.getElementById('luma-cs-install-status');
+      if (st) st.textContent = 'Installing\u2026';
+      fetch(toolInstallUrl('cloud_redirect'), { method: 'POST', mode: 'cors', cache: 'no-store' })
+        .then(function(r) { return r.json(); })
+        .catch(function() { });
+    });
+  }
+
+  var sel = document.getElementById('luma-cs-provider') as HTMLSelectElement | null;
+  if (sel) {
+    sel.addEventListener('change', function() {
+      _cloudsaveProviderSel = sel.value;
+      _cloudsaveSelectTouched = true;
+      var m = document.getElementById('luma-cs-msg');
+      if (m) m.style.display = 'none';
+      showCloudSavePane();
+    });
+  }
+
+  var loginBtn = document.getElementById('luma-cs-login');
+  if (loginBtn) {
+    loginBtn.addEventListener('click', function() {
+      var prov = cloudSaveCurrentProvider();
+      loginBtn.setAttribute('disabled', 'true');
+      loginBtn.style.opacity = '0.5';
+      cloudSavePost(cloudSaveLoginUrl(), { provider: prov }, function(d) {
+        if (!d || !d.ok) {
+          loginBtn.removeAttribute('disabled');
+          loginBtn.style.opacity = '';
+          cloudSaveShowMsg((d && d.message) || 'Sign-in could not be started', false);
+        } else {
+          cloudSaveShowMsg('Complete the sign-in in your browser\u2026', true);
+          loadCloudSaveStatus();
+        }
+      });
+    });
+  }
+
+  var useBtn = document.getElementById('luma-cs-use');
+  if (useBtn) {
+    useBtn.addEventListener('click', function() {
+      var prov = cloudSaveCurrentProvider();
+      useBtn.setAttribute('disabled', 'true');
+      cloudSavePost(cloudSaveSaveProviderUrl(), { provider: prov }, function(d) {
+        useBtn.removeAttribute('disabled');
+        if (d && d.ok) {
+          _cloudsaveSelectTouched = false;
+          cloudSaveShowMsg('Provider activated', true);
+          loadCloudSaveStatus();
+        } else {
+          cloudSaveShowMsg((d && d.message) || 'Could not activate provider', false);
+        }
+      });
+    });
+  }
+
+  function bindSave(btnId: string, gather: () => any, label: string) {
+    var btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.addEventListener('click', function() {
+      var prov = btnId === 'luma-cs-save-r2' ? 'r2' : btnId === 'luma-cs-save-s3' ? 's3' : 'folder';
+      btn.setAttribute('disabled', 'true');
+      btn.style.opacity = '0.5';
+      var body = gather();
+      cloudSavePost(cloudSaveSaveProviderUrl(), body, function(d) {
+        btn.removeAttribute('disabled');
+        btn.style.opacity = '';
+        if (d && d.ok) {
+          _cloudsaveSelectTouched = false;
+          cloudSaveShowMsg(label + ' saved', true);
+          loadCloudSaveStatus();
+        } else {
+          cloudSaveShowMsg((d && d.message) || 'Save failed', false);
+        }
+      });
+    });
+  }
+
+  bindSave('luma-cs-save-r2', function() {
+    var g = (id: string) => (document.getElementById(id) as HTMLInputElement | null);
+    var o: any = { provider: 'r2', r2: {} };
+    var vals: Array<[string, string]> = [
+      ['account_id', (g('luma-cs-r2-account') || {}).value],
+      ['access_key_id', (g('luma-cs-r2-keyid') || {}).value],
+      ['secret_access_key', (g('luma-cs-r2-secret') || {}).value],
+      ['bucket', (g('luma-cs-r2-bucket') || {}).value],
+      ['key_prefix', (g('luma-cs-r2-prefix') || {}).value],
+      ['endpoint', (g('luma-cs-r2-endpoint') || {}).value],
+    ];
+    for (var i = 0; i < vals.length; i++) if (vals[i][1]) o.r2[vals[i][0]] = vals[i][1];
+    return o;
+  }, 'R2');
+
+  bindSave('luma-cs-save-s3', function() {
+    var g = (id: string) => (document.getElementById(id) as HTMLInputElement | null);
+    var o: any = { provider: 's3', s3: {} };
+    var vals: Array<[string, string]> = [
+      ['access_key_id', (g('luma-cs-s3-keyid') || {}).value],
+      ['secret_access_key', (g('luma-cs-s3-secret') || {}).value],
+      ['bucket', (g('luma-cs-s3-bucket') || {}).value],
+      ['endpoint', (g('luma-cs-s3-endpoint') || {}).value],
+      ['region', (g('luma-cs-s3-region') || {}).value],
+      ['key_prefix', (g('luma-cs-s3-prefix') || {}).value],
+    ];
+    for (var i = 0; i < vals.length; i++) if (vals[i][1]) o.s3[vals[i][0]] = vals[i][1];
+    return o;
+  }, 'S3');
+
+  bindSave('luma-cs-save-folder', function() {
+    var el = document.getElementById('luma-cs-folder-path') as HTMLInputElement | null;
+    return { provider: 'folder', path: el ? el.value.trim() : '' };
+  }, 'Folder');
+
+  var logoutBtn = document.getElementById('luma-cs-logout');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', function() {
+      logoutBtn.setAttribute('disabled', 'true');
+      cloudSavePost(cloudSaveLogoutUrl(), {}, function(d) {
+        logoutBtn.removeAttribute('disabled');
+        cloudSaveShowMsg((d && d.message) || (d && d.ok ? 'Signed out' : 'Sign-out failed'), !!(d && d.ok));
+        loadCloudSaveStatus();
+      });
+    });
+  }
+
+  var tgAch = document.getElementById('luma-cs-tg-ach');
+  if (tgAch) {
+    tgAch.addEventListener('click', function() {
+      var on = !tgAch.classList.contains('on');
+      tgAch.classList.toggle('on', on);
+      cloudSavePost(cloudSaveStatsSyncUrl(), { achievements: on }, function(d) {
+        if (!d || !d.ok) {
+          tgAch.classList.toggle('on', !on);
+          cloudSaveShowMsg((d && d.message) || 'Could not save stats setting', false);
+        } else {
+          cloudSaveShowMsg('Saved \u2014 restart Steam to apply', true);
+          loadCloudSaveStatus();
+        }
+      });
+    });
+  }
+
+  var tgPt = document.getElementById('luma-cs-tg-pt');
+  if (tgPt) {
+    tgPt.addEventListener('click', function() {
+      var on = !tgPt.classList.contains('on');
+      tgPt.classList.toggle('on', on);
+      cloudSavePost(cloudSaveStatsSyncUrl(), { playtime: on }, function(d) {
+        if (!d || !d.ok) {
+          tgPt.classList.toggle('on', !on);
+          cloudSaveShowMsg((d && d.message) || 'Could not save stats setting', false);
+        } else {
+          cloudSaveShowMsg('Saved \u2014 restart Steam to apply', true);
+          loadCloudSaveStatus();
+        }
+      });
+    });
+  }
+
+  var searchEl = document.getElementById('luma-cs-search') as HTMLInputElement | null;
+  if (searchEl) {
+    searchEl.addEventListener('input', function() {
+      _cloudsaveQuery = searchEl.value;
+      paintCloudSaveGames();
+    });
+  }
+
+  var listEl = document.getElementById('luma-cs-list');
+  if (listEl) {
+    listEl.addEventListener('click', function(e: Event) {
+      var target = e.target as HTMLElement;
+      var btn = target && target.closest ? target.closest('[data-cs-delete]') as HTMLElement | null : null;
+      if (!btn) return;
+      var appId = btn.getAttribute('data-cs-delete');
+      if (!appId) return;
+
+      if (btn.getAttribute('data-confirm') === '1') {
+        btn.setAttribute('disabled', 'true');
+        btn.style.opacity = '0.5';
+        btn.removeAttribute('data-confirm');
+        btn.textContent = 'Deleting\u2026';
+        fetch(cloudSaveAppDeleteUrl(appId), { method: 'DELETE', mode: 'cors', cache: 'no-store' })
+          .then(function(r) { return r.json(); })
+          .then(function(d) {
+            var ok = !!(d && (d.localDeleted || d.cloudDeleted));
+            var msg = (d && d.message) || (ok ? 'Deleted' : 'Delete failed');
+            cloudSaveShowMsg(msg, ok);
+            loadCloudSaveStatus();
+            loadCloudSaveApps();
+          })
+          .catch(function() {
+            cloudSaveShowMsg('Delete request failed', false);
+            paintCloudSaveGames();
+          });
+        return;
+      }
+
+      btn.setAttribute('data-confirm', '1');
+      btn.textContent = 'Confirm?';
+      btn.style.color = '#ff6e6e';
+      btn.style.borderColor = 'rgba(231,76,60,.5)';
+      setTimeout(function() {
+        if (!btn.isConnected) return;
+        if (btn.getAttribute('data-confirm') === '1') {
+          btn.removeAttribute('data-confirm');
+          btn.textContent = 'Delete';
+          btn.style.color = '';
+          btn.style.borderColor = '';
+        }
+      }, 3000);
+    });
+  }
+
+  // Initial load + live poll
+  loadCloudSaveStatus();
+  loadCloudSaveApps();
+
+  function tick() {
+    if (seq !== _cloudsavePollSeq) return;
+    if (!document.getElementById('luma-cs-list')) return;
+    fetch(cloudSaveStatusUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+      .then(function(r) { return r.json(); })
+      .then(function(s) {
+        if (seq !== _cloudsavePollSeq) return;
+        if (s && s.ok) {
+          var prev = _cloudsaveStatus;
+          var changed = JSON.stringify(s) !== JSON.stringify(prev);
+          if (changed) {
+            var needApps = !prev || prev.installed !== s.installed ||
+              prev.appsSynced !== s.appsSynced || prev.loggedIn !== s.loggedIn ||
+              prev.provider !== s.provider;
+            applyCloudSaveStatus(s);
+            if (needApps) loadCloudSaveApps();
+          }
+          var running = !!(s.auth && s.auth.state === 'running');
+          _cloudsavePollTimer = setTimeout(tick, running ? 1000 : (!s.installed ? 2500 : 4000));
+        } else {
+          _cloudsavePollTimer = setTimeout(tick, 5000);
+        }
+      })
+      .catch(function() {
+        if (seq !== _cloudsavePollSeq) return;
+        _cloudsavePollTimer = setTimeout(tick, 5000);
+      });
+  }
+  _cloudsavePollTimer = setTimeout(tick, 3000);
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function esc(s: string): string {
@@ -1816,10 +2411,10 @@ export function openSidebar(initialTab?: string) {
   headerHtml += '<button class="luma-ssh-close-btn" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgX() + '</button>';
   headerHtml += '</div>';
 
-  var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;">';
+  var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;overflow-x:auto;scrollbar-width:none;">';
   for (var i = 0; i < TABS.length; i++) {
     var tab = TABS[i];
-    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1;padding:10px 4px;text-align:center;font-size:11px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
+    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 0 auto;white-space:nowrap;padding:10px 6px;text-align:center;font-size:11px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
   }
   tabsHtml += '</div>';
 

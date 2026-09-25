@@ -408,6 +408,7 @@ export function ensureKeyframes(): void {
       '.luma-sidebar-btn.secondary:hover{background:rgba(255,255,255,.08);}' +
       '.luma-ssh-close-btn:hover{background:rgba(255,255,255,.08)!important;color:#fff!important;}' +
       '.luma-ssh-close-btn:focus-visible{outline:2px solid #66c0ff;outline-offset:2px;}' +
+      '#luma-sidebar-panel .luma-sidebar-tabs::-webkit-scrollbar{height:0;width:0;}' +
       '';
     (document.head || document.documentElement).appendChild(s);
   } catch (_) { }

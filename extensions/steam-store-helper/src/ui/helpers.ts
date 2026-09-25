@@ -274,6 +274,34 @@ export function luaFileDeleteUrl(appId: string): string {
   return bridgeUrl('/api/lua-files/' + appId);
 }
 
+export function cloudSaveStatusUrl(): string {
+  return bridgeUrl('/api/cloudsave/status');
+}
+
+export function cloudSaveAppsUrl(): string {
+  return bridgeUrl('/api/cloudsave/apps');
+}
+
+export function cloudSaveLoginUrl(): string {
+  return bridgeUrl('/api/cloudsave/login');
+}
+
+export function cloudSaveSaveProviderUrl(): string {
+  return bridgeUrl('/api/cloudsave/save-provider');
+}
+
+export function cloudSaveLogoutUrl(): string {
+  return bridgeUrl('/api/cloudsave/logout');
+}
+
+export function cloudSaveStatsSyncUrl(): string {
+  return bridgeUrl('/api/cloudsave/stats-sync');
+}
+
+export function cloudSaveAppDeleteUrl(appId: string): string {
+  return bridgeUrl('/api/cloudsave/apps/' + appId);
+}
+
 export function providerStatsUrl(): string {
   return bridgeUrl('/api/provider-stats');
 }
