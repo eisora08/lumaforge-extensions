@@ -4,6 +4,18 @@
 local downloads = {}
 local providers_cache = nil
 
+-- Default providers seeded into config.json when it is missing or has no
+-- providers (API keys are intentionally NOT included — user re-enters them).
+local DEFAULT_PROVIDERS = {
+    { id = "hubcapdb", name = "Hubcapdb", baseUrl = "https://hubcapmanifest.com", enabled = true },
+    { id = "ryuu", name = "Ryuu", baseUrl = "https://generator.ryuu.lol", enabled = false },
+    { id = "custom", name = "Custom", baseUrl = "https://api.example.com", enabled = false },
+    { id = "steamkeys", name = "Steam Keys", baseUrl = "https://github.com/P-ToyStore/SteamManifestCache_Pro", enabled = true },
+}
+
+-- Forward declaration: assigned after read/write_config_file are defined.
+local seed_defaults
+
 -- Provider URL templates — maps provider id to a function that builds
 -- the check URL and download URL for a given app_id.
 -- Each returns: check_url, download_url, headers_table
@@ -49,37 +61,61 @@ local function load_providers()
 
     local config_path = get_config_path()
     local raw = config_path ~= "" and file_exists(config_path) and read_file(config_path) or nil
-    if not raw then
+    local parsed = nil
+
+    if raw then
+        local ok, config = pcall(json_decode, raw)
+        if ok and config then
+            parsed = config
+        else
+            log("[steam-store-helper] Failed to parse config.json")
+        end
+    else
         log("[steam-store-helper] No config.json found at " .. config_path)
+    end
+
+    local raw_providers = {}
+    if parsed then
+        local dl = parsed.downloads or parsed
+        if type(dl.providers) == "table" then
+            raw_providers = dl.providers
+        end
+    end
+
+    if #raw_providers > 0 then
         providers_cache = {}
+        for _, p in ipairs(raw_providers) do
+            local id = p.id or p.name or "unknown"
+            local adapter_fn = PROVIDER_ADAPTERS[id] or generic_adapter
+            table.insert(providers_cache, {
+                id = id,
+                name = p.name or id,
+                enabled = p.enabled ~= false,
+                base_url = p.baseUrl or p.base_url or "",
+                api_key = p.apiKey or p.api_key or nil,
+                adapter = adapter_fn
+            })
+        end
+
+        log("[steam-store-helper] Loaded " .. #providers_cache .. " providers from config.json")
         return providers_cache
     end
 
-    local ok, config = pcall(json_decode, raw)
-    if not ok or not config then
-        log("[steam-store-helper] Failed to parse config.json")
-        providers_cache = {}
-        return providers_cache
-    end
-
-    local dl = config.downloads or config
-    local raw_providers = dl.providers or {}
-
+    -- No config / no providers: persist defaults (best effort) and fall back
+    -- to the in-memory defaults so provider checks keep working.
+    pcall(seed_defaults)
     providers_cache = {}
-    for _, p in ipairs(raw_providers) do
-        local id = p.id or p.name or "unknown"
-        local adapter_fn = PROVIDER_ADAPTERS[id] or generic_adapter
+    for _, p in ipairs(DEFAULT_PROVIDERS) do
         table.insert(providers_cache, {
-            id = id,
-            name = p.name or id,
+            id = p.id,
+            name = p.name,
             enabled = p.enabled ~= false,
-            base_url = p.baseUrl or p.base_url or "",
-            api_key = p.apiKey or p.api_key or nil,
-            adapter = adapter_fn
+            base_url = p.baseUrl,
+            api_key = nil,
+            adapter = PROVIDER_ADAPTERS[p.id] or generic_adapter
         })
     end
-
-    log("[steam-store-helper] Loaded " .. #providers_cache .. " providers from config.json")
+    log("[steam-store-helper] Using " .. #providers_cache .. " default providers")
     return providers_cache
 end
 
@@ -444,22 +480,89 @@ local function write_config_file(config)
     return write_file(config_path, encoded)
 end
 
+local function copy_default_providers()
+    local t = {}
+    for _, p in ipairs(DEFAULT_PROVIDERS) do
+        table.insert(t, { id = p.id, name = p.name, baseUrl = p.baseUrl, enabled = p.enabled })
+    end
+    return t
+end
+
+-- Persist the default provider list:
+--   * config.json missing  -> create it with defaults (nothing to clobber)
+--   * config.json present  -> fill downloads.providers only, preserving all
+--                             other sections (appearance, steam, fixes, ...)
+-- Never overwrites a corrupt file or an existing non-empty provider list.
+seed_defaults = function()
+    local config_path = get_config_path()
+    if config_path == "" then
+        return false
+    end
+
+    if file_exists(config_path) then
+        local cfg = read_config_file()
+        if not cfg then
+            return false
+        end
+        local dl = cfg.downloads
+        if type(dl) ~= "table" then
+            dl = {}
+            cfg.downloads = dl
+        end
+        if type(dl.providers) == "table" and #dl.providers > 0 then
+            return false
+        end
+        if dl.multiProviderFallback == nil then
+            dl.multiProviderFallback = true
+        end
+        dl.providers = copy_default_providers()
+        local ok = write_config_file(cfg)
+        if ok then
+            log("[steam-store-helper] Seeded default providers into existing config.json")
+        end
+        return ok
+    end
+
+    local cfg = { downloads = { multiProviderFallback = true, providers = copy_default_providers() } }
+    local ok = write_config_file(cfg)
+    if ok then
+        log("[steam-store-helper] Created config.json with default providers")
+    end
+    return ok
+end
+
 routes["GET /api/settings"] = function(req)
     local config = read_config_file()
-    if not config then
+    local dl = (config and config.downloads) or {}
+    local raw_providers = dl.providers or {}
+
+    if #raw_providers == 0 then
+        -- No config or empty provider list: persist defaults (creates
+        -- config.json on first tab open) and return them so the UI always
+        -- has rows to render.
+        pcall(seed_defaults)
+        local defaults = {}
+        for _, p in ipairs(DEFAULT_PROVIDERS) do
+            table.insert(defaults, {
+                id = p.id,
+                name = p.name,
+                enabled = p.enabled ~= false,
+                baseUrl = p.baseUrl,
+                hasKey = false,
+                maskedKey = ""
+            })
+        end
         return {
             status = 200,
             body = json_encode({
                 ok = true,
-                providers = {},
-                message = "No config found"
+                providers = defaults,
+                message = config and "Providers were empty, seeded defaults" or "No config found, created defaults"
             }),
             contentType = "application/json"
         }
     end
 
-    local dl = config.downloads or {}
-    local raw_providers = dl.providers or {}
     local providers = {}
 
     for _, p in ipairs(raw_providers) do

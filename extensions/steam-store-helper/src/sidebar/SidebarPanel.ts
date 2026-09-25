@@ -372,23 +372,86 @@ function renderActiveNow(): void {
 function gameArtHtml(appId: string, fallbackSvg: string): string {
   var id = String(appId == null ? '' : appId).trim();
   if (!/^\d+$/.test(id)) return '<div class="luma-stat-icon blue">' + fallbackSvg + '</div>';
+  // No src here: art is loaded through loadGameArt() (bridge JSON -> Blob),
+  // because a plain <img src="http://127.0.0.1:..."> from the HTTPS store
+  // page is blocked as mixed content.
   return '<div class="luma-stat-icon blue" style="position:relative;overflow:hidden;padding:0;">' + fallbackSvg +
-    '<img class="luma-card-art" src="https://cdn.cloudflare.steamstatic.com/steam/apps/' + id + '/header.jpg" alt=""' +
+    '<img class="luma-card-art" data-art-appid="' + id + '" alt=""' +
     ' style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;" /></div>';
+}
+
+var _artObjectUrls: Record<string, string> = {};
+
+function loadGameArt(img: HTMLImageElement): void {
+  var id = img.getAttribute('data-art-appid') || '';
+  if (!id || img.getAttribute('data-art-loading')) return;
+  img.setAttribute('data-art-loading', '1');
+
+  var cached = _artObjectUrls[id];
+  if (cached) {
+    img.src = cached;
+    img.style.display = '';
+    return;
+  }
+
+  function useCdnFallback(): void {
+    // Direct CDN may still 404 for some apps — then the svg stays visible.
+    img.addEventListener('load', function() { img.style.display = ''; });
+    img.addEventListener('error', function() { img.removeAttribute('src'); });
+    img.src = 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + id + '/header.jpg';
+  }
+
+  retryFetch(bridgeUrl('/api/art/' + id), { method: 'GET', mode: 'cors', cache: 'no-store' }, 'sidebar-art', { appId: id })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d || !d.ok || !d.b64) { useCdnFallback(); return; }
+      var bin = atob(d.b64);
+      var arr = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      var url = URL.createObjectURL(new Blob([arr], { type: d.ct || 'image/jpeg' }));
+      _artObjectUrls[id] = url;
+      img.src = url;
+      img.style.display = '';
+    })
+    .catch(function() { useCdnFallback(); });
 }
 
 function wireCardArt(root: HTMLElement): void {
   var imgs = root.querySelectorAll('img.luma-card-art');
   for (var i = 0; i < imgs.length; i++) {
     (function(img: HTMLImageElement) {
-      if (img.complete && img.naturalWidth > 0) {
-        img.style.display = '';
-        return;
-      }
-      img.addEventListener('load', function() { img.style.display = ''; });
-      // on error the img stays hidden and the svg fallback shows through
+      if (img.getAttribute('src')) return;
+      loadGameArt(img);
     })(imgs[i] as HTMLImageElement);
   }
+}
+
+// Unified catalog (/api/catalog) — installed/cloudsave flags for card badges.
+var _catalogRows: Record<string, any> | null = null;
+var _catalogPending: Promise<void> | null = null;
+
+function catalogRow(appId: string): any {
+  return _catalogRows && _catalogRows[String(appId)] ? _catalogRows[String(appId)] : null;
+}
+
+function refreshCatalog(then: () => void): void {
+  if (_catalogRows) { then(); return; }
+  if (!_catalogPending) {
+    _catalogPending = retryFetch(bridgeUrl('/api/catalog'), { method: 'GET', mode: 'cors', cache: 'no-store' }, 'sidebar-catalog')
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        var rows: Record<string, any> = {};
+        if (d && d.ok && Array.isArray(d.apps)) {
+          for (var i = 0; i < d.apps.length; i++) rows[String(d.apps[i].appId)] = d.apps[i];
+        }
+        _catalogRows = rows;
+      })
+      .catch(function() {
+        _catalogRows = {};
+      })
+      .then(function() { _catalogPending = null; });
+  }
+  _catalogPending.then(then);
 }
 
 function paintLuaCards(): void {
@@ -429,11 +492,13 @@ function paintLuaCards(): void {
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
         var pin = pins[f.appId] || null;
-        var installed = !!(pin && pin.installed);
+        var catRow = catalogRow(f.appId);
+        var installed = !!(pin && pin.installed) || !!(catRow && catRow.installed);
         var hasPins = !!(pin && pin.hasPins);
         var badges = '';
         if (installed) badges += ' \u00b7 <span style="color:#64c882;">Installed</span>';
         if (hasPins) badges += ' \u00b7 <span style="color:#f0ad4e;">Pinned</span>';
+        if (catRow && catRow.cloudsave && catRow.cloudsave !== false) badges += ' \u00b7 <span style="color:#5bc0de;">Cloud</span>';
 
         h += '<div class="luma-stat-card" data-lua-appid="' + esc(f.appId) + '" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
         h += gameArtHtml(f.appId, svgBox());
@@ -458,6 +523,7 @@ function paintLuaCards(): void {
       }
       luaContainer.innerHTML = h;
       wireCardArt(luaContainer);
+      if (!_catalogRows) refreshCatalog(function() { paintLuaCards(); });
 
       // Close menus when clicking outside a menu (bind once per container)
       if (!luaContainer.getAttribute('data-pin-bound')) {
@@ -608,7 +674,7 @@ function renderProvidersTab(container: HTMLElement) {
         container.innerHTML = '<div style="text-align:center;padding:40px;color:#e74c3c;">Failed to load settings</div>';
         return;
       }
-      var providers = data.providers || [];
+      var providers = Array.isArray(data.providers) ? data.providers : [];
       var h = '';
 
       // Provider list
@@ -2023,19 +2089,22 @@ function paintCloudSaveGames(): void {
   var h = '';
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
+    var csCatRow = catalogRow(f.appId);
+    var csBadges = (csCatRow && csCatRow.installed) ? ' \u00b7 <span style="color:#64c882;">Installed</span>' : '';
     h += '<div class="luma-stat-card" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
     h += gameArtHtml(f.appId, svgBox());
     h += '<div style="flex:1;min-width:0;">';
     h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
     h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">';
     h += 'CN ' + esc(String(f.cn || '0')) + ' \u00b7 ' + (f.fileCount || 0) + ' file' + ((f.fileCount || 0) === 1 ? '' : 's') +
-         ' \u00b7 ' + formatBytes(f.sizeBytes || 0) + (f.modified ? ' \u00b7 ' + formatTimeAgo(f.modified) : '');
+         ' \u00b7 ' + formatBytes(f.sizeBytes || 0) + (f.modified ? ' \u00b7 ' + formatTimeAgo(f.modified) : '') + csBadges;
     h += '</div></div>';
     h += '<button class="luma-sidebar-btn secondary" data-cs-delete="' + esc(String(f.appId)) + '" data-cs-name="' + esc(f.name || '') + '" style="padding:3px 8px;font-size:10px;flex-shrink:0;">Delete</button>';
     h += '</div>';
   }
   listEl.innerHTML = h;
   wireCardArt(listEl);
+  if (!_catalogRows) refreshCatalog(function() { paintCloudSaveGames(); });
 }
 
 function loadCloudSaveApps(): void {
