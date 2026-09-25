@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Package zip
+        run: |
+          ver=$(node -p "require('./extensions/steam-store-helper/manifest.json').version")
+          mkdir -p stage
+          cp extensions/steam-store-helper/manifest.json \
+             extensions/steam-store-helper/inject.js \
+             extensions/steam-store-helper/backend.lua \
+             extensions/steam-store-helper/extension.lua \
+             extensions/steam-store-helper/extension-config.json \
+             stage/
+          (cd stage && zip -r "../steam-store-helper-$ver.zip" .)
+          echo "Packaged steam-store-helper-$ver.zip"
+
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: steam-store-helper-*.zip
+          name: steam-store-helper ${{ github.ref_name }}
+          body: 'See the assets for download links.'
