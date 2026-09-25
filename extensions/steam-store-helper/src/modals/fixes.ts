@@ -28,7 +28,7 @@ var ROW_DEFS: FixRowDef[] = [
   {
     key: 'smokeapi',
     label: 'SmokeAPI',
-    desc: 'Unlocks achievements and Steamworks online features for legitimate DLC ownership.',
+    desc: 'SmokeAPI emulates Steamworks DLC ownership in games legitimately owned on Steam: it fools the Steamworks SDK into thinking you own the game\u2019s DLCs, while the rest of Steamworks (multiplayer, achievements, etc.) remains fully functional.',
     appliedKey: 'smokeApi',
     toolId: 'smokeapi',
     installedKey: 'smokeApiInstalled',

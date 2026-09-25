@@ -369,6 +369,28 @@ function renderActiveNow(): void {
   wrap.innerHTML = h;
 }
 
+function gameArtHtml(appId: string, fallbackSvg: string): string {
+  var id = String(appId == null ? '' : appId).trim();
+  if (!/^\d+$/.test(id)) return '<div class="luma-stat-icon blue">' + fallbackSvg + '</div>';
+  return '<div class="luma-stat-icon blue" style="position:relative;overflow:hidden;padding:0;">' + fallbackSvg +
+    '<img class="luma-card-art" src="https://cdn.cloudflare.steamstatic.com/steam/apps/' + id + '/header.jpg" alt=""' +
+    ' style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;display:none;" /></div>';
+}
+
+function wireCardArt(root: HTMLElement): void {
+  var imgs = root.querySelectorAll('img.luma-card-art');
+  for (var i = 0; i < imgs.length; i++) {
+    (function(img: HTMLImageElement) {
+      if (img.complete && img.naturalWidth > 0) {
+        img.style.display = '';
+        return;
+      }
+      img.addEventListener('load', function() { img.style.display = ''; });
+      // on error the img stays hidden and the svg fallback shows through
+    })(imgs[i] as HTMLImageElement);
+  }
+}
+
 function paintLuaCards(): void {
   var luaContainer = document.getElementById('luma-dash-lua-container');
   if (!luaContainer) return;
@@ -414,7 +436,7 @@ function paintLuaCards(): void {
         if (hasPins) badges += ' \u00b7 <span style="color:#f0ad4e;">Pinned</span>';
 
         h += '<div class="luma-stat-card" data-lua-appid="' + esc(f.appId) + '" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
-        h += '<div class="luma-stat-icon blue">' + svgBox() + '</div>';
+        h += gameArtHtml(f.appId, svgBox());
         h += '<div style="flex:1;min-width:0;">';
         h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
         h += '<div style="font-size:10px;color:#8f98a0;">ID: ' + esc(f.appId) + ' \u00b7 ' + esc(f.filename) + badges + '</div>';
@@ -435,6 +457,7 @@ function paintLuaCards(): void {
         h += '</div>';
       }
       luaContainer.innerHTML = h;
+      wireCardArt(luaContainer);
 
       // Close menus when clicking outside a menu (bind once per container)
       if (!luaContainer.getAttribute('data-pin-bound')) {
@@ -804,21 +827,47 @@ function renderDownloadsTab(container: HTMLElement) {
     renderHistory();
   }
 
-  // Clear history button
+  // Clear history button — clears bridge (depot) history AND in-memory lua/source history
   var clearHistoryBtn = document.getElementById('luma-clear-history-btn');
   if (clearHistoryBtn) {
     clearHistoryBtn.addEventListener('click', function(e) {
       e.stopPropagation();
+      state.downloadHistory = [];
+      saveSessionState();
+      renderHistory();
       fetch(downloadsQueueClearHistoryUrl(), { method: 'POST', mode: 'cors', cache: 'no-store' })
         .then(function() { renderCards(); })
         .catch(function() {});
     });
   }
 
+  var lastBridgeHistory: any[] = [];
+
   function renderHistory(bridgeHistory?: any[]) {
     if (!historyEl) return;
+    if (bridgeHistory) lastBridgeHistory = bridgeHistory;
     var hHtml = '';
-    var histArr = bridgeHistory || state.downloadHistory || [];
+
+    // Bridge (depot) history + in-memory lua/source history, deduped by id, newest first
+    var merged = (lastBridgeHistory || []).concat(state.downloadHistory || []);
+    var seen: Record<string, boolean> = {};
+    var histArr: any[] = [];
+    for (var mi = 0; mi < merged.length; mi++) {
+      var mitem = merged[mi];
+      if (mitem && mitem.id != null) {
+        var mkey = String(mitem.id);
+        if (seen[mkey]) continue;
+        seen[mkey] = true;
+      }
+      histArr.push(mitem);
+    }
+    histArr.sort(function(a, b) {
+      var ta = a.timestamp || a.completedAt || 0;
+      var tb = b.timestamp || b.completedAt || 0;
+      if (ta < 1e12) ta *= 1000;
+      if (tb < 1e12) tb *= 1000;
+      return tb - ta;
+    });
     for (var h = 0; h < histArr.length; h++) {
       var hist = histArr[h];
       var isPaused = hist.status === 'paused';
@@ -866,6 +915,13 @@ function renderDownloadsTab(container: HTMLElement) {
       removeButtons[r].addEventListener('click', function(this: HTMLElement) {
         var id = this.getAttribute('data-remove-history');
         if (id) {
+          // Lua/source entries live only in memory — remove them there too
+          var before = state.downloadHistory.length;
+          state.downloadHistory = state.downloadHistory.filter(function(x) { return String(x.id) !== String(id); });
+          if (state.downloadHistory.length !== before) {
+            saveSessionState();
+            renderHistory();
+          }
           fetch(downloadsQueueRemoveHistoryUrl(id), { method: 'POST', mode: 'cors', cache: 'no-store' })
             .then(function() { renderCards(); })
             .catch(function() {});
@@ -1855,7 +1911,7 @@ function applyCloudSaveStatus(s: any): void {
   var ins = document.getElementById('luma-cs-installed');
   if (ni && ins) {
     ni.style.display = s.installed ? 'none' : '';
-    ins.style.display = s.installed ? '' : 'none';
+    ins.style.display = s.installed ? 'flex' : 'none';
   }
 
   var provName = CS_PROVIDER_NAMES[s.provider] || '';
@@ -1968,6 +2024,7 @@ function paintCloudSaveGames(): void {
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     h += '<div class="luma-stat-card" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
+    h += gameArtHtml(f.appId, svgBox());
     h += '<div style="flex:1;min-width:0;">';
     h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
     h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">';
@@ -1978,6 +2035,7 @@ function paintCloudSaveGames(): void {
     h += '</div>';
   }
   listEl.innerHTML = h;
+  wireCardArt(listEl);
 }
 
 function loadCloudSaveApps(): void {
@@ -2016,7 +2074,7 @@ function renderCloudsaveTab(container: HTMLElement) {
   html += '</div></div>';
 
   // Installed
-  html += '<div id="luma-cs-installed" style="display:none;">';
+  html += '<div id="luma-cs-installed" style="display:none;flex:1;min-height:0;flex-direction:column;">';
 
   // Provider card
   html += '<div class="luma-stat-card" style="margin-top:2px;"><div class="luma-stat-icon blue">' + svgBox() + '</div>';
@@ -2399,7 +2457,7 @@ export function openSidebar(initialTab?: string) {
   var panel = document.createElement('div');
   panel.id = SIDEBAR_ID;
   panel.setAttribute('style',
-    'position:fixed;top:0;right:0;width:380px;height:100vh;' +
+    'position:fixed;top:0;right:0;width:440px;height:100vh;' +
     'background:#1b2838;border-left:1px solid rgba(102,192,255,.12);' +
     'box-shadow:-8px 0 32px rgba(0,0,0,.5);z-index:10001;' +
     'display:flex;flex-direction:column;font-family:"Motiva Sans",Arial,sans-serif;' +
@@ -2414,7 +2472,7 @@ export function openSidebar(initialTab?: string) {
   var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;overflow-x:auto;scrollbar-width:none;">';
   for (var i = 0; i < TABS.length; i++) {
     var tab = TABS[i];
-    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 0 auto;white-space:nowrap;padding:10px 6px;text-align:center;font-size:11px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
+    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 0 auto;white-space:nowrap;padding:10px 4px;text-align:center;font-size:10px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
   }
   tabsHtml += '</div>';
 
