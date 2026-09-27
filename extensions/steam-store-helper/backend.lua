@@ -372,6 +372,17 @@ local function start_download(app_id, source_id, output_type)
             return
         end
 
+        -- ZIP packages must be extracted by the Rust package installer; the
+        -- Lua sandbox has no zip library, so refuse to write raw zip bytes
+        -- as the .lua payload (that produced a .lua file that was really a
+        -- renamed zip).
+        if body:byte(1) == 0x50 and body:byte(2) == 0x4B then
+            dl.status = "failed"
+            dl.message = "ZIP package must be installed through the LumaForge proxy"
+            dl.error = "ZIP_REQUIRES_INSTALLER"
+            return
+        end
+
         dl.status = "processing"
         dl.message = "Processing package"
         dl.progress = 90
