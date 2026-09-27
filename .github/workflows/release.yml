@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -36,10 +38,28 @@ jobs:
           (cd stage && zip -r "../steam-store-helper-$ver.zip" .)
           echo "Packaged steam-store-helper-$ver.zip"
 
+      # Auto-generated notes only list commits when PRs exist, so build the
+      # "What's Changed" list straight from git log.
+      - name: Build release notes
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="$GITHUB_REF_NAME"
+          prev="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+          {
+            echo 'See the assets for download links.'
+            echo
+            if [ -n "$prev" ]; then
+              echo "## What's Changed"
+              git log --no-merges --pretty='- `%h` %s' "${prev}..${tag}"
+              echo
+              echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${prev}...${tag}"
+            fi
+          } > release-notes.md
+
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: steam-store-helper-*.zip
           name: steam-store-helper ${{ github.ref_name }}
-          body: 'See the assets for download links.'
-          generate_release_notes: true
+          body_path: release-notes.md
