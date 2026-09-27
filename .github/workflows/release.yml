@@ -42,3 +42,4 @@ jobs:
           files: steam-store-helper-*.zip
           name: steam-store-helper ${{ github.ref_name }}
           body: 'See the assets for download links.'
+          generate_release_notes: true
