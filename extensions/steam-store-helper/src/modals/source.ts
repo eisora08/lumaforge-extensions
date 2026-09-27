@@ -556,7 +556,9 @@ export function renderSources(
       name.textContent = src.name || src.id;
       var detail = document.createElement('div');
       detail.setAttribute('style', ST.cardDetail);
-      if (avail) {
+      if (src.id === 'steamkeys') {
+        detail.textContent = src.detail || 'Generate \u00b7 Pin \u00b7 Fetch';
+      } else if (avail) {
         var packageSize = formatFileSize(
           src.total || src.packageSize || 0
         );
@@ -673,7 +675,16 @@ export function renderSources(
       badge.setAttribute('data-lumaforge-source-badge', 'true');
       badge.setAttribute('class', 'luma-source-badge-wrap');
 
-      if (avail) {
+      if (src.id === 'steamkeys') {
+        badge.setAttribute(
+          'style',
+          ST.badgeAvail
+        );
+
+        badge.innerHTML =
+          dot('green') +
+          '<span>Ready</span>';
+      } else if (avail) {
         badge.setAttribute(
           'style',
           ST.badgeAvail

@@ -10,11 +10,22 @@ local DEFAULT_PROVIDERS = {
     { id = "hubcapdb", name = "Hubcapdb", baseUrl = "https://hubcapmanifest.com", enabled = true },
     { id = "ryuu", name = "Ryuu", baseUrl = "https://generator.ryuu.lol", enabled = false },
     { id = "custom", name = "Custom", baseUrl = "https://api.example.com", enabled = false },
-    { id = "steamkeys", name = "Steam Keys", baseUrl = "https://github.com/P-ToyStore/SteamManifestCache_Pro", enabled = true },
+    { id = "steamkeys", name = "Key Generator", baseUrl = "", enabled = true },
 }
 
 -- Forward declaration: assigned after read/write_config_file are defined.
 local seed_defaults
+
+-- Display names forced on read/save so older config.json entries (which still
+-- carry the previous label) render with the current name. The provider id is
+-- stable and must never change — all internal checks key off it.
+local PROVIDER_DISPLAY_NAMES = {
+    steamkeys = "Key Generator"
+}
+
+local function provider_display_name(id, name)
+    return PROVIDER_DISPLAY_NAMES[id] or name or id
+end
 
 -- Provider URL templates — maps provider id to a function that builds
 -- the check URL and download URL for a given app_id.
@@ -89,7 +100,7 @@ local function load_providers()
             local adapter_fn = PROVIDER_ADAPTERS[id] or generic_adapter
             table.insert(providers_cache, {
                 id = id,
-                name = p.name or id,
+                name = provider_display_name(id, p.name),
                 enabled = p.enabled ~= false,
                 base_url = p.baseUrl or p.base_url or "",
                 api_key = p.apiKey or p.api_key or nil,
@@ -108,7 +119,7 @@ local function load_providers()
     for _, p in ipairs(DEFAULT_PROVIDERS) do
         table.insert(providers_cache, {
             id = p.id,
-            name = p.name,
+            name = provider_display_name(p.id, p.name),
             enabled = p.enabled ~= false,
             base_url = p.baseUrl,
             api_key = nil,
@@ -120,7 +131,7 @@ local function load_providers()
 end
 
 local function check_provider_available(provider, app_id)
-    -- Steam Keys is a local provider (lua generation + GitHub fetch): always available
+    -- Key Generator is a local provider (lua generation + manifest fetch): always available
     if provider.id == "steamkeys" then
         return true, nil, 200
     end
@@ -292,11 +303,11 @@ local function handle_sources(app_id)
         end
     end
 
-    -- Steam Keys is always available even if missing from config
+    -- Key Generator is always available even if missing from config
     if not has_steamkeys then
         table.insert(sources, 1, {
             id = "steamkeys",
-            name = "Steam Keys",
+            name = "Key Generator",
             available = true,
             selectable = true,
             detail = "Generate .lua \226\128\148 Pin \226\128\148 Fetch",
@@ -329,6 +340,15 @@ local function start_download(app_id, source_id, output_type)
         return {
             ok = false,
             message = "Provider not found: " .. tostring(source_id)
+        }
+    end
+
+    -- Key Generator needs no remote package: the LumaForge bridge generates
+    -- the .lua locally, so there is no base URL to fetch from here.
+    if target_api.id == "steamkeys" then
+        return {
+            ok = false,
+            message = "Key Generator packages are created by the LumaForge bridge"
         }
     end
 
@@ -579,7 +599,7 @@ routes["GET /api/settings"] = function(req)
     for _, p in ipairs(raw_providers) do
         table.insert(providers, {
             id = p.id or "unknown",
-            name = p.name or p.id or "Unknown",
+            name = provider_display_name(p.id or "unknown", p.name),
             enabled = p.enabled ~= false,
             baseUrl = p.baseUrl or p.base_url or "",
             hasKey = p.apiKey ~= nil and p.apiKey ~= "",
@@ -632,9 +652,10 @@ routes["POST /api/settings"] = function(req)
             local existing = existing_by_id[id] or {}
             local entry = {
                 id = id,
-                name = np.name or existing.name or id,
+                name = provider_display_name(id, np.name or existing.name),
                 enabled = np.enabled ~= false,
-                baseUrl = np.baseUrl or existing.baseUrl or "",
+                -- Local provider: it has no endpoint, so never persist a URL.
+                baseUrl = id == "steamkeys" and "" or (np.baseUrl or existing.baseUrl or ""),
                 apiKey = np.apiKey
             }
             -- If apiKey is nil or empty, preserve existing key
@@ -669,7 +690,7 @@ routes["POST /api/settings/test-key"] = function(req)
     local base_url = body.baseUrl
     local api_key = body.apiKey
 
-    -- Steam Keys requires no API key: report success without any HTTP request
+    -- Key Generator requires no API key: report success without any HTTP request
     if provider_id == "steamkeys" then
         return {
             status = 200,

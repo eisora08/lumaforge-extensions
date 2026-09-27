@@ -1,13 +1,12 @@
 # LumaForge Extensions
 
-Official extension repository for [LumaForge](https://github.com/eisora08/luma-lite).
+Official extension repository for [LumaForge](https://github.com/eisora08/lumaforge-panel).
 
 ## Extensions
 
 | Extension | ID | Version | Description |
 |-----------|-----|---------|-------------|
-| Steam Store Package Helper | `steam-store-helper` | 2.6.0 | Injects asset download controls into the Steam Store action bar |
-| OpenSteamTool (Community) | `opensteamtool` | 1.4.8 | DLL-based Steam integration tool |
+| Steam Store Package Helper | `steam-store-helper` | 2.6.2 | Injects asset download controls into the Steam Store action bar |
 
 ## Repository URL
 

@@ -1,6 +1,6 @@
 // Steam Store Helper — Constants, state, and platform detection
 
-var LUMA_INJECT_VERSION = '2.6.0-Auto-Update';
+var LUMA_INJECT_VERSION = __LUMA_VERSION__ + '-Auto-Update';
 var DOCUMENT_ID = Date.now() + '-' + Math.random().toString(36).slice(2);
 
 var EXTENSION_ID = 'steam-store-helper';

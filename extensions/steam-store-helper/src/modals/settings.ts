@@ -253,13 +253,13 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
     html += '</div>';
 
     html += '<div style="display:flex;flex-direction:column;gap:6px;">';
-    html += '<div style="display:flex;align-items:center;gap:6px;">';
-    html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">URL</label>';
-    html += '<input id="' + urlId + '" data-provider-url type="text" value="' + esc(p.baseUrl || '') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
-    html += '</div>';
     if (p.id === 'steamkeys') {
-      html += '<div style="font-size:11px;color:#64c882;">No API key required \u2014 local provider (lua generation + manifest fetch)</div>';
+      html += '<div style="font-size:11px;color:#64c882;">Local provider \u2014 no URL and no API key required (lua generation + manifest fetch)</div>';
     } else {
+      html += '<div style="display:flex;align-items:center;gap:6px;">';
+      html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">URL</label>';
+      html += '<input id="' + urlId + '" data-provider-url type="text" value="' + esc(p.baseUrl || '') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
+      html += '</div>';
       html += '<div style="display:flex;align-items:center;gap:6px;">';
       html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">API Key</label>';
       html += '<input id="' + keyId + '" data-provider-key type="password" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'No key set') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
@@ -347,7 +347,8 @@ export function saveSettings(container: HTMLElement): void {
   rows.forEach(function(row) {
     var id = row.getAttribute('data-provider-id');
     var enabled = (row.querySelector('[data-provider-enabled]') as HTMLInputElement).checked;
-    var baseUrl = (row.querySelector('[data-provider-url]') as HTMLInputElement).value;
+    var urlInput = row.querySelector('[data-provider-url]') as HTMLInputElement | null;
+    var baseUrl = urlInput ? urlInput.value : undefined;
     var keyInput = row.querySelector('[data-provider-key]') as HTMLInputElement | null;
     var apiKey = keyInput && keyInput.value ? keyInput.value : undefined;
     var nameAttr = row.getAttribute('data-provider-name');

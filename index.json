@@ -5,28 +5,17 @@
   "description": "Official extensions maintained by the LumaForge team",
   "maintainer": "LumaForge Team",
   "version": "1.0.0",
-  "updatedAt": "2026-07-20T00:00:00Z",
+  "updatedAt": "2026-09-26T00:00:00Z",
   "extensions": [
     {
       "id": "steam-store-helper",
       "name": "steam-store-helper",
       "displayName": "Steam Store Package Helper",
       "description": "Injects asset download controls directly into the official Steam Store action bar via standalone WebSockets.",
-      "version": "2.6.0",
+      "version": "2.6.2",
       "author": "LumaForge",
       "categories": ["steam", "tools"],
       "manifestUrl": "extensions/steam-store-helper/manifest.json",
-      "verified": true
-    },
-    {
-      "id": "opensteamtool",
-      "name": "opensteamtool",
-      "displayName": "OpenSteamTool (Community)",
-      "description": "DLL-based Steam integration tool (independent Lua module)",
-      "version": "1.4.8",
-      "author": "LumaForge Team",
-      "categories": ["steam"],
-      "manifestUrl": "extensions/opensteamtool/manifest.json",
       "verified": true
     }
   ]

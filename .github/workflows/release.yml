@@ -23,6 +23,10 @@ jobs:
 
       - run: npm ci
 
+      # Refuse to package when manifest.json, extension.lua, index.json,
+      # README.md or the injected version constants disagree.
+      - run: npm run versions:check
+
       - run: npm run build
 
       - name: Package zip

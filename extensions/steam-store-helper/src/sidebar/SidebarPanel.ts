@@ -10,7 +10,7 @@ import { applyInLibraryState } from '../ui/button';
 
 var SIDEBAR_ID = 'luma-sidebar-panel';
 var BACKDROP_ID = 'luma-sidebar-backdrop';
-var LUMA_VERSION = '2.6.0';
+var LUMA_VERSION = __LUMA_VERSION__;
 
 var _downloadsPollTimer: ReturnType<typeof setTimeout> | null = null;
 var _downloadsPollSeq = 0;
@@ -694,11 +694,15 @@ function renderProvidersTab(container: HTMLElement) {
         h += '<span class="luma-provider-test-status" data-test-status="' + i + '" style="font-size:10px;color:#8f98a0;"></span>';
         h += '</div>';
 
-        // Row 2: URL
-        h += '<div style="display:flex;align-items:center;gap:6px;">';
-        h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">URL</label>';
-        h += '<input type="text" data-provider-url="' + i + '" value="' + esc(p.baseUrl || '') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
-        h += '</div>';
+        // Row 2: URL (local providers have no endpoint to configure)
+        if (p.id === 'steamkeys') {
+          h += '<div style="font-size:10px;color:#64c882;">Local provider \u2014 no URL and no API key required</div>';
+        } else {
+          h += '<div style="display:flex;align-items:center;gap:6px;">';
+          h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">URL</label>';
+          h += '<input type="text" data-provider-url="' + i + '" value="' + esc(p.baseUrl || '') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
+          h += '</div>';
+        }
 
         if (p.id !== 'steamkeys') {
           // Row 3: API Key + Test + Get Key link
@@ -1689,8 +1693,8 @@ function renderSettingsTab(container: HTMLElement) {
   html += '</div>';
   html += '</div></div>';
 
-  // ── Steam Keys ──
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Steam Keys</div>';
+  // ── Key Generator ──
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Key Generator</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:8px;">Manifest pinning for generated Lua scripts</div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
