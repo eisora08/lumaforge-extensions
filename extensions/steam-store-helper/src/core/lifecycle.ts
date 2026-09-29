@@ -1,13 +1,16 @@
 import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
 import { abortPendingRequests, cancelAllRetries, removeButton, syncNamespaceState, ensureLumaButtonExists, setButtonState, setButtonLumaState, checkLocalStatus, handleLocalStatusResult } from '../ui/button';
-import { ST } from '../ui/styles';
+import { ST, ensureBtnStates } from '../ui/styles';
 import { svgSpinner } from '../ui/svg';
 import { ensureSettingsButton } from '../modals/settings';
 import { closeModal, openSourceModal, stopDownloadPoll } from '../modals/source';
 import { openDepotModal } from '../modals/depot';
 import { openFixesModal } from '../modals/fixes';
 import { stopObserver, restoreHistory, patchHistory, reconcile, startObserver } from './spa';
-import { detectBridgePort, extractAppId, bridgeUrl } from '../ui/helpers';
+import { pushHistoryToBridge } from './history_sync';
+import { detectBridgePort, extractAppId, bridgeUrl, isLibrarySurface } from '../ui/helpers';
+import { resolveThemeColors, watchThemeReload } from '../ui/themeColor';
+import { startManageMenu, stopManageMenu } from '../ui/manageMenu';
 
 // ---------------------------------------------------------------------------
 // Teardown
@@ -34,6 +37,7 @@ export function teardown(): void {
     restoreHistory();
     closeModal();
     removeButton();
+    stopManageMenu();
     state.currentAppId = null;
     state.currentUrl = null;
     syncNamespaceState();
@@ -54,13 +58,23 @@ export function activate(): void {
     loadSessionState();
     state.currentUrl = location.href;
     state.currentAppId = extractAppId();
+    resolveThemeColors();
+    watchThemeReload();
+    // The active theme's CSS can land after activation (proxy pushes it on
+    // startup) — re-resolve once so surface/accent vars pick it up.
+    setTimeout(function() { resolveThemeColors(); }, 2000);
     patchHistory();
     setupEventDelegation();
+    ensureBtnStates();
     startObserver();
+    if (isLibrarySurface()) startManageMenu();
     ensureLumaButtonExists();
     ensureSettingsButton();
     detectBridgePort();
     syncNamespaceState();
+    // Sync this origin's local download history to the bridge queue file so
+    // other surfaces (library window) render it too
+    pushHistoryToBridge();
     // Auto-start next queued download on activation
     fetch(bridgeUrl('/api/downloads-queue/start-next'), { method: 'POST', mode: 'cors', cache: 'no-store' }).catch(function() {});
     console.log('[LUMA_RUNTIME] Version:', LUMA_INJECT_VERSION);

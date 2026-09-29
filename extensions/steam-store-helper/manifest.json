@@ -39,7 +39,8 @@
   "activation": {
     "cefInjection": true,
     "injectScript": "inject.js",
-    "targetUrl": "store.steampowered.com"
+    "targetUrl": "store.steampowered.com",
+    "runtimeTargetUrl": "steamloopback.host"
   },
   "backend": {
     "backendType": "lua",

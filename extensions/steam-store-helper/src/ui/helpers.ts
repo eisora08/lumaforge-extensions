@@ -3,6 +3,10 @@ import { APP_URL_RE, MAX_ID_LENGTH, ACTION_SELECTORS, BRIDGE_HOST, BRIDGE_SCHEME
 // ---------------------------------------------------------------------------
 // URL & ID helpers
 // ---------------------------------------------------------------------------
+export function isLibrarySurface(): boolean {
+  try { return location.hostname === 'steamloopback.host'; } catch (_) { return false; }
+}
+
 export function extractAppId(): string | null {
   try {
     // Method 1: Try window.location (works in standard browser)
@@ -168,7 +172,9 @@ export function esc(s: string): string {
 
 export function detectBridgePort(): Promise<void> {
   if (bridgeConfig.detected) return Promise.resolve();
-  var ports = [21775, 21776, 21777];
+  // 21777 was luma-lite's port — removed: probing it stalled detection and
+  // could latch onto a stale listener. The proxy uses 21775 (21776 fallback).
+  var ports = [21775, 21776];
   var tryPort = function (i: number): Promise<void> {
     if (i >= ports.length) return Promise.resolve();
     var url = BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + ports[i] + '/health';
@@ -264,6 +270,10 @@ export function downloadsQueueClearHistoryUrl(): string {
 
 export function downloadsQueueRemoveHistoryUrl(id: string): string {
   return bridgeUrl('/api/downloads-queue/remove-history/' + id);
+}
+
+export function downloadsQueueHistoryUrl(): string {
+  return bridgeUrl('/api/downloads-queue/history');
 }
 
 export function luaFilesUrl(): string {

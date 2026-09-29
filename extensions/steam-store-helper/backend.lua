@@ -690,6 +690,19 @@ routes["POST /api/settings/test-key"] = function(req)
     local base_url = body.baseUrl
     local api_key = body.apiKey
 
+    -- Unchanged masked input is omitted client-side: fall back to the stored
+    -- key so Test still exercises the real credential.
+    if not api_key or api_key == "" then
+        local config = read_config_file()
+        local dl = (config and config.downloads) or {}
+        for _, p in ipairs(dl.providers or {}) do
+            if p.id == provider_id and p.apiKey and p.apiKey ~= "" then
+                api_key = p.apiKey
+                break
+            end
+        end
+    end
+
     -- Key Generator requires no API key: report success without any HTTP request
     if provider_id == "steamkeys" then
         return {

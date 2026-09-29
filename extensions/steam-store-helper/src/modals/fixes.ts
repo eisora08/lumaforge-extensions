@@ -1,7 +1,7 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION } from '../core/state';
 import { svgBox, svgX, svgSpinner, svgErrorCircle, svgCheck, svgGear, svgLock, svgCloudDownload, svgCheckSmall, svgRefresh } from '../ui/svg';
 import { ST } from '../ui/styles';
-import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody, restartSteamUrl } from '../ui/helpers';
+import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody } from '../ui/helpers';
 import { escapeHtml } from '../ui/dom';
 import { closeModal } from './source';
 
@@ -173,18 +173,12 @@ export function openFixesModal(appId: string): void {
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
     footerNote.textContent = 'Fixes back up original files (.bak) and write a fix log';
-    var restartBtn = document.createElement('button');
-    restartBtn.type = 'button';
-    restartBtn.setAttribute('style', ST.cancelBtn);
-    restartBtn.textContent = 'Restart Steam';
-    restartBtn.addEventListener('click', function () { restartSteamFixes(); });
     var closeFooterBtn = document.createElement('button');
     closeFooterBtn.type = 'button';
     closeFooterBtn.setAttribute('style', ST.cancelBtn);
     closeFooterBtn.textContent = 'Close';
     closeFooterBtn.addEventListener('click', function () { closeFixesModal(); });
     footer.appendChild(footerNote);
-    footer.appendChild(restartBtn);
     footer.appendChild(closeFooterBtn);
 
     panel.appendChild(header);
@@ -324,7 +318,7 @@ function renderFixes(appId: string): void {
   html += '<span style="font-size:13px;font-weight:700;color:#fff;">' + escapeHtml(info.name || 'App ' + appId) + '</span>';
   if (info.installed) {
     chips.forEach(function (c) {
-      html += '<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(102,192,255,.12);color:#66c0ff;">' + c + '</span>';
+      html += '<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:var(--luma-ssh-a12,rgba(102,192,255,.12));color:var(--luma-ssh-accent,#66c0ff);">' + c + '</span>';
     });
   }
   html += '</div>';
@@ -404,7 +398,7 @@ function renderRow(
   s += 'position:relative;overflow:hidden;">';
 
   // icon
-  s += '<div style="width:36px;height:36px;border-radius:8px;background:rgba(102,192,255,.08);border:1px solid rgba(102,192,255,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:' + (applied ? '#64c882' : '#66c0ff') + ';">' + iconSvg + '</div>';
+  s += '<div style="width:36px;height:36px;border-radius:8px;background:var(--luma-ssh-a08,rgba(102,192,255,.08));border:1px solid var(--luma-ssh-a12,rgba(102,192,255,.12));display:flex;align-items:center;justify-content:center;flex-shrink:0;color:' + (applied ? '#64c882' : 'var(--luma-ssh-accent,#66c0ff)') + ';">' + iconSvg + '</div>';
 
   // info
   s += '<div style="flex:1;min-width:0;">';
@@ -424,12 +418,12 @@ function renderRow(
     var prog = job.progress || 0;
     s += '<div style="margin-top:8px;">';
     s += '<div style="height:4px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;">';
-    s += '<div style="height:100%;width:' + prog + '%;background:linear-gradient(to right,#1a9fff,#66c0ff);transition:width .3s ease;"></div>';
+    s += '<div style="height:100%;width:' + prog + '%;background:linear-gradient(to right,#1a9fff,var(--luma-ssh-accent,#66c0ff));transition:width .3s ease;"></div>';
     s += '</div>';
-    s += '<div style="font-size:10px;color:#66c0ff;margin-top:4px;">' + escapeHtml(job.message || 'Working\u2026') + ' (' + prog + '%)</div>';
+    s += '<div style="font-size:10px;color:var(--luma-ssh-accent,#66c0ff);margin-top:4px;">' + escapeHtml(job.message || 'Working\u2026') + ' (' + prog + '%)</div>';
     s += '</div>';
   } else if (isBusy) {
-    s += '<div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:11px;color:#66c0ff;">' + svgSpinner() + '<span>Starting\u2026</span></div>';
+    s += '<div style="margin-top:8px;display:flex;align-items:center;gap:6px;font-size:11px;color:var(--luma-ssh-accent,#66c0ff);">' + svgSpinner() + '<span>Starting\u2026</span></div>';
   }
 
   // result flash
@@ -774,10 +768,4 @@ function firstCatalogRow(ms: any): string | null {
     if (ms.pending['catalog:' + ms.catalogEntries[i].id]) return 'catalog:' + ms.catalogEntries[i].id;
   }
   return ms.catalogEntries.length > 0 ? 'catalog:' + ms.catalogEntries[0].id : null;
-}
-
-function restartSteamFixes(): void {
-  fetch(restartSteamUrl(), { method: 'POST', mode: 'cors', cache: 'no-store' })
-    .then(function (r) { return r.json(); })
-    .catch(function () {});
 }

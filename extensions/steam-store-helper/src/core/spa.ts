@@ -1,5 +1,5 @@
-import { state, BTN_ID, BTN_APPID_ATTR, NAMESPACE } from '../core/state';
-import { extractAppId } from '../ui/helpers';
+import { state, BTN_ID, BTN_APPID_ATTR, NAMESPACE, saveSessionState } from '../core/state';
+import { extractAppId, isLibrarySurface, downloadsQueueUrl } from '../ui/helpers';
 import { abortPendingRequests, cancelAllRetries, removeButton, getObserverRoot, syncNamespaceState, ensureLumaButtonExists, scheduleBridgeRecovery } from '../ui/button';
 import { closeModal } from '../modals/source';
 import { ensureSettingsButton } from '../modals/settings';
@@ -18,9 +18,18 @@ export function reconcile(): void {
   // Ensure floating settings button exists on every page
   ensureSettingsButton();
 
-  // Re-create sidebar if it was open before navigation
+  // Re-create sidebar only while a download is actually active — a stale
+  // persisted sidebarOpen must never resurrect the panel on navigation.
   if (state.sidebarOpen && !document.getElementById('luma-sidebar-panel')) {
-    openSidebar(state.currentTab);
+    restoreSidebarIfDownloading();
+  }
+
+  // Library surface: only the floating gear/sidebar apply here. Skip the
+  // store action-button logic (its DOM queries/log spam fire on every
+  // mutation frame in the constantly-repainting library).
+  if (isLibrarySurface()) {
+    state.currentUrl = url;
+    return;
   }
 
   console.log('[LUMA_WATCHER] Reconcile start');
@@ -103,6 +112,30 @@ export function reconcile(): void {
   }
 
   syncNamespaceState();
+}
+
+// Restore-once gate for the sidebar: check the bridge queue (snapshot
+// activeDownloads is NOT restored across docs) and only bring the panel back
+// when something is actually downloading. Otherwise clear the stale flag.
+var _sidebarRestoreChecked = false;
+function restoreSidebarIfDownloading(): void {
+  if (_sidebarRestoreChecked) return;
+  _sidebarRestoreChecked = true;
+  var finish = function (active: boolean) {
+    if (active) {
+      openSidebar(state.currentTab);
+    } else {
+      state.sidebarOpen = false;
+      saveSessionState();
+    }
+  };
+  if (state.activeDownloads.length > 0) { finish(true); return; }
+  fetch(downloadsQueueUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      finish(!!(data && data.ok && (data.queue || []).length > 0));
+    })
+    .catch(function () { finish(false); });
 }
 
 // ---------------------------------------------------------------------------

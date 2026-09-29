@@ -10,9 +10,29 @@ var SETTINGS_BTN_ID = 'luma-ssh-settings-btn';
 var _settingsBtnTimer: ReturnType<typeof setInterval> | null = null;
 var _settingsBtnHasDownloads = false;
 
+// The floating gear must only exist on real surfaces (library main window,
+// store pages). Context menus / notifications / supernavs inherit the
+// steamloopback origin and run this script too — popups must stay clean, and
+// so do the splash/tracking windows (about:blank, data:, steamloopback docs
+// without the #library root — the splash logo window never mounts the SPA).
+function isTransientSurface(): boolean {
+  try {
+    var body = document.body;
+    if (!body) return true;
+    if ((body.className || '').indexOf('ContextMenuPopupBody') !== -1) return true;
+    if (window.innerWidth < 480 || window.innerHeight < 400) return true;
+    var host = location.hostname;
+    if (host === 'store.steampowered.com') return false;
+    if (host === 'steamloopback.host') return !document.getElementById('library');
+    return true;
+  } catch (_) { }
+  return false;
+}
+
 export function ensureSettingsButton(): void {
   try {
     if (document.getElementById(SETTINGS_BTN_ID)) return;
+    if (isTransientSurface()) return;
 
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -35,14 +55,16 @@ export function ensureSettingsButton(): void {
       if (!_settingsBtnHasDownloads) btn.style.transform = 'scale(1.1)';
     });
     btn.addEventListener('mouseleave', function() {
-      btn.style.background = _settingsBtnHasDownloads ? 'rgba(102,192,255,.2)' : 'rgba(30,30,40,.85)';
-      btn.style.color = _settingsBtnHasDownloads ? '#66c0ff' : 'rgba(255,255,255,.6)';
-      btn.style.borderColor = _settingsBtnHasDownloads ? 'rgba(102,192,255,.4)' : 'rgba(255,255,255,.15)';
+      btn.style.background = _settingsBtnHasDownloads ? 'var(--luma-ssh-a20,rgba(102,192,255,.2))' : 'rgba(30,30,40,.85)';
+      btn.style.color = _settingsBtnHasDownloads ? 'var(--luma-ssh-accent,#66c0ff)' : 'rgba(255,255,255,.6)';
+      btn.style.borderColor = _settingsBtnHasDownloads ? 'var(--luma-ssh-a40,rgba(102,192,255,.4))' : 'rgba(255,255,255,.15)';
       btn.style.transform = 'scale(1)';
     });
     btn.addEventListener('click', function(e) {
       e.stopPropagation();
-      openSidebar('downloads');
+      // Downloads tab only while something is actually downloading — otherwise
+      // land on the dashboard.
+      openSidebar(_settingsBtnHasDownloads ? 'downloads' : 'dashboard');
     });
 
     (document.body || document.documentElement).appendChild(btn);
@@ -60,6 +82,9 @@ function startSettingsBtnTimer(): void {
   _settingsBtnTimer = setInterval(function() {
     var btn = document.getElementById(SETTINGS_BTN_ID) as HTMLElement | null;
     if (!btn) { stopSettingsBtnTimer(); return; }
+    // Background/hidden documents (popups, minimized windows) must not poll —
+    // N docs x 2s used to flood the bridge with TIME_WAIT connections.
+    if (document.hidden) return;
 
     // Check bridge queue for active downloads
     fetch(downloadsQueueUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
@@ -74,9 +99,9 @@ function startSettingsBtnTimer(): void {
           if (hasDownloads) {
             btn.innerHTML = svgDownload();
             btn.title = 'LumaForge \u2014 Active Downloads';
-            btn.style.background = 'rgba(102,192,255,.15)';
-            btn.style.color = '#66c0ff';
-            btn.style.borderColor = 'rgba(102,192,255,.3)';
+            btn.style.background = 'var(--luma-ssh-a15,rgba(102,192,255,.15))';
+            btn.style.color = 'var(--luma-ssh-accent,#66c0ff)';
+            btn.style.borderColor = 'var(--luma-ssh-a30,rgba(102,192,255,.3))';
             btn.style.animation = 'luma_ssh_download_pulse 2s ease-in-out infinite, luma_ssh_download_glow 2s ease-in-out infinite';
           } else {
             btn.innerHTML = svgGear();

@@ -2,7 +2,7 @@ import { state, _fetchSeq, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR,
 import { svgDownload, svgSpinner, svgCheck, svgGear, svgX, svgCloudDownload } from '../ui/svg';
 import { ST } from '../ui/styles';
 import { ensureKeyframes } from '../ui/styles';
-import { extractAppId, findActionContainer, localStatusUrl } from '../ui/helpers';
+import { extractAppId, findActionContainer, localStatusUrl, isLibrarySurface } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
 
 // ---------------------------------------------------------------------------
@@ -395,6 +395,7 @@ export function checkLocalStatus(appId: string, cb: (err: any, data: any, appId:
 // ---------------------------------------------------------------------------
 export function ensureLumaButtonExists(): void {
   try {
+    if (isLibrarySurface()) return;
     var appId = extractAppId();
 
     if (!appId) {

@@ -1,4 +1,5 @@
 import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION, IS_LINUX, saveSessionState } from '../core/state';
+import { addHistoryEntry } from '../core/history_sync';
 import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svgBox, svgErrorCircle, svgLibrary } from '../ui/svg';
 import { ST, dot } from '../ui/styles';
 import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, steamKeysSettingsUrl } from '../ui/helpers';
@@ -666,7 +667,7 @@ export function renderSources(
         autofetchWrap.id = 'luma-sk-autofetch-wrap';
         autofetchWrap.setAttribute('style', 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.7);user-select:none;margin-top:6px;');
         autofetchWrap.innerHTML =
-          '<input type="checkbox" id="luma-sk-autofetch" style="accent-color:#66c0ff;cursor:pointer;">' +
+          '<input type="checkbox" id="luma-sk-autofetch" style="accent-color:var(--luma-ssh-accent,#66c0ff);cursor:pointer;">' +
           '<span>Auto-fetch manifests after generating</span>';
         info.appendChild(autofetchWrap);
       }
@@ -705,9 +706,9 @@ export function renderSources(
           'font-weight:700;' +
           'white-space:nowrap;' +
           'flex-shrink:0;' +
-          'background:rgba(102,192,255,.14);' +
+          'background:var(--luma-ssh-a14,rgba(102,192,255,.14));' +
           'color:var(--luma-ssh-accent,#66c0ff);' +
-          'box-shadow:0 0 8px rgba(102,192,255,.16);'
+          'box-shadow:0 0 8px var(--luma-ssh-a16,rgba(102,192,255,.16));'
         );
 
         badge.innerHTML =
@@ -877,7 +878,7 @@ export function showDownloadProgress(appId: string, requestId: string, sourceId?
       '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">' + title + '</div>' +
       '<div style="' + ST.progressLabel + '"><span style="font-family:monospace;font-size:10px;opacity:.7;" title="' + (requestId || '') + '">' + (requestId || '').slice(0, 16) + '\u2026</span></div>' +
       '<div style="' + ST.progressBar + '"><div id="luma-progress-fill" style="' + ST.progressFill + '"></div></div>' +
-      '<div id="luma-progress-status" style="font-size:12px;color:#66c0ff;">Queued</div>' +
+      '<div id="luma-progress-status" style="font-size:12px;color:var(--luma-ssh-accent,#66c0ff);">Queued</div>' +
       '</div>';
     try { logModalHorizontalOverflow(); } catch (_) { }
   } catch (_) { }
@@ -966,13 +967,11 @@ export function startDownloadPoll(requestId: string, appId: string): void {
         if (d.status === 'completed') {
           var completedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
-          state.downloadHistory.unshift({
+          addHistoryEntry({
             id: requestId, appId: appId, gameName: completedDl ? completedDl.gameName : undefined,
             type: 'source', status: 'completed', timestamp: Date.now(),
             progress: 100, bytesDownloaded: d.bytesDownloaded || d.bytesRead || 0, totalBytes: d.totalBytes || 0,
           });
-          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
-          saveSessionState();
           showDownloadSuccess(appId, requestId);
           notifySettled();
           return;
@@ -980,13 +979,11 @@ export function startDownloadPoll(requestId: string, appId: string): void {
         if (d.status === 'failed') {
           var failedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
-          state.downloadHistory.unshift({
+          addHistoryEntry({
             id: requestId, appId: appId, gameName: failedDl ? failedDl.gameName : undefined,
             type: 'source', status: 'failed', timestamp: Date.now(),
             progress: d.progress || 0, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
           });
-          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
-          saveSessionState();
           showDownloadError(appId, d.message || 'Download failed', d.errorCode);
           notifySettled();
           return;
@@ -1050,26 +1047,22 @@ export function restartDownloadPoll(requestId: string, appId: string): void {
           state.requestContext = null;
           var completedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
-          state.downloadHistory.unshift({
+          addHistoryEntry({
             id: requestId, appId: appId, gameName: completedDl ? completedDl.gameName : undefined,
             type: 'source', status: 'completed', timestamp: Date.now(),
             progress: 100, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
           });
-          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
-          saveSessionState();
           return;
         }
         if (d.status === 'failed') {
           state.requestContext = null;
           var failedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
-          state.downloadHistory.unshift({
+          addHistoryEntry({
             id: requestId, appId: appId, gameName: failedDl ? failedDl.gameName : undefined,
             type: 'source', status: 'failed', timestamp: Date.now(),
             progress: d.progress || 0, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
           });
-          if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
-          saveSessionState();
           return;
         }
 

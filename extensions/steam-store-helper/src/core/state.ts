@@ -13,7 +13,11 @@ var bridgeConfig = {
 var BRIDGE_PORT = 21775;
 var BRIDGE_PORT_DETECTED = false;
 
-try { document.title = 'SSH_INJECTED_' + DOCUMENT_ID; } catch(_) {}
+// Never rename the library window title: theme patches match on ^Steam$ and
+// applyWindow() re-reads doc.title live (a rename would break them).
+try {
+  if (location.hostname !== 'steamloopback.host') document.title = 'SSH_INJECTED_' + DOCUMENT_ID;
+} catch (_) {}
 var NAMESPACE = '__lumaforge_ssh__';
 var BTN_ID = 'luma-action-btn';
 var FIXES_BTN_ID = 'luma-fixes-btn';

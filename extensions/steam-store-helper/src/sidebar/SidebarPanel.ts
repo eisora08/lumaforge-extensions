@@ -1,5 +1,6 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState } from '../core/state';
-import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary } from '../ui/svg';
+import { addHistoryEntry } from '../core/history_sync';
+import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary, svgPin, svgTrash } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
 import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl, cloudSaveStatusUrl, cloudSaveAppsUrl, cloudSaveLoginUrl, cloudSaveSaveProviderUrl, cloudSaveLogoutUrl, cloudSaveStatsSyncUrl, cloudSaveAppDeleteUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
@@ -43,17 +44,17 @@ function showSteamRestartDialog(appId: string, gameName: string): void {
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);';
 
   var restartBtnHtml = IS_LINUX
-    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:#66c0ff;color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' RESTART STEAM</button>'
+    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:var(--luma-ssh-accent,#66c0ff);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' RESTART STEAM</button>'
     : '';
 
   overlay.innerHTML =
-    '<div style="background:#1b2838;border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:28px 24px 20px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);">' +
+    '<div style="background:var(--luma-ssh-bg-panel,#1b2838);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:28px 24px 20px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);">' +
     '<div style="margin-bottom:12px;">' + svgCheck(32, 32) + '</div>' +
     '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;">Content Downloaded</div>' +
     '<div style="font-size:12px;color:#8f98a0;margin-bottom:4px;">' + escapeHtml(gameName) + '</div>' +
     '<div style="font-size:12px;color:#8f98a0;margin-bottom:16px;">Game content has been downloaded and registered in Steam.</div>' +
     (IS_LINUX
-      ? '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:rgba(102,192,255,.08);border:1px solid rgba(102,192,255,.15);font-size:12px;color:#c7d5e0;">Steam needs to be restarted to detect the new game.<br>Would you like to restart now?</div>'
+      ? '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:var(--luma-ssh-a08,rgba(102,192,255,.08));border:1px solid var(--luma-ssh-a15,rgba(102,192,255,.15));font-size:12px;color:#c7d5e0;">Steam needs to be restarted to detect the new game.<br>Would you like to restart now?</div>'
       : '') +
     '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
     restartBtnHtml +
@@ -142,14 +143,25 @@ function renderTabContent(tabId: string) {
   if (tabId !== 'dashboard') stopDashPoll();
   if (tabId !== 'cloudsave') stopCloudsavePoll();
 
-  switch (tabId) {
-    case 'dashboard': renderDashboardTab(content as HTMLElement); break;
-    case 'providers': renderProvidersTab(content as HTMLElement); break;
-    case 'downloads': renderDownloadsTab(content as HTMLElement); break;
-    case 'tools': renderToolsTab(content as HTMLElement); break;
-    case 'cloudsave': renderCloudsaveTab(content as HTMLElement); break;
-    case 'fixes': renderFixesTab(content as HTMLElement); break;
-    case 'settings': renderSettingsTab(content as HTMLElement); break;
+  // A renderer that throws must never leave the "Loading..." placeholder up —
+  // show the error (and stay interactive) instead of a dead tab.
+  try {
+    switch (tabId) {
+      case 'dashboard': renderDashboardTab(content as HTMLElement); break;
+      case 'providers': renderProvidersTab(content as HTMLElement); break;
+      case 'downloads': renderDownloadsTab(content as HTMLElement); break;
+      case 'tools': renderToolsTab(content as HTMLElement); break;
+      case 'cloudsave': renderCloudsaveTab(content as HTMLElement); break;
+      case 'fixes': renderFixesTab(content as HTMLElement); break;
+      case 'settings': renderSettingsTab(content as HTMLElement); break;
+    }
+  } catch (e) {
+    console.error('[LUMA_INJECT] renderTab error for ' + tabId + ':', e);
+    (content as HTMLElement).innerHTML =
+      '<div style="text-align:center;padding:40px;color:#e74c3c;">' +
+      '<div>Failed to render ' + esc(tabId) + ' tab</div>' +
+      '<div style="font-size:11px;color:#8f98a0;margin-top:8px;">' + esc(String((e && (e as Error).message) || e)) + '</div>' +
+      '</div>';
   }
 }
 
@@ -228,11 +240,6 @@ function renderDashboardTab(container: HTMLElement) {
   // Active downloads list (repainted live by the dashboard poll)
   html += '<div class="luma-sidebar-section" id="luma-dash-active-section" style="' + ((state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0) ? '' : 'display:none;') + '"><div class="luma-sidebar-section-title">Active Now</div><div id="luma-dash-active"></div></div>';
 
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Quick Actions</div>';
-  html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-  html += '<button class="luma-sidebar-btn secondary" id="luma-dash-refresh">Refresh</button>';
-  html += '</div></div>';
-
   // Lua Scripts section — flex:1 reaches the sidebar footer, scrolls internally
   html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" style="flex-shrink:0;">Lua Scripts</div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-shrink:0;">';
@@ -252,9 +259,6 @@ function renderDashboardTab(container: HTMLElement) {
   container.innerHTML = html;
 
   renderActiveNow();
-
-  var refreshBtn = document.getElementById('luma-dash-refresh');
-  if (refreshBtn) refreshBtn.addEventListener('click', function() { renderDashboardTab(container); });
 
   var searchEl = document.getElementById('luma-lua-search') as HTMLInputElement | null;
   if (searchEl) searchEl.addEventListener('input', function() { _luaQuery = searchEl.value; paintLuaCards(); });
@@ -356,7 +360,7 @@ function renderActiveNow(): void {
     h += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon blue">' + svgDownload() + '</div><div style="flex:1;min-width:0;">';
     h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">App ' + esc(dl.appId) + '</div>';
     h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(dl.phase || 'Downloading') + ' \u00b7 ' + pct.toFixed(0) + '%</div>';
-    h += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:#66c0ff;border-radius:2px;transition:width .3s;"></div></div>';
+    h += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--luma-ssh-accent,#66c0ff);border-radius:2px;transition:width .3s;"></div></div>';
     h += '</div></div>';
   }
   for (var j = 0; j < state.activeDepotJobs.length; j++) {
@@ -508,17 +512,17 @@ function paintLuaCards(): void {
         h += '</div>';
         h += '<div style="position:relative;flex-shrink:0;">';
         if (hasPins) {
-          h += '<button class="luma-lua-pin-btn" data-lua-pin-direct="' + esc(f.appId) + '" title="Unpin manifest" style="background:rgba(240,173,78,.15);border:1px solid rgba(240,173,78,.5);color:#f0ad4e;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">\u{1F4CC}</button>';
+          h += '<button class="luma-lua-pin-btn" data-lua-pin-direct="' + esc(f.appId) + '" title="Unpin manifest" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(240,173,78,.15);border:1px solid rgba(240,173,78,.5);color:#f0ad4e;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">' + svgPin(12, 12) + '</button>';
         } else {
-          h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="Manifest pins" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">\u{1F4CC}</button>';
+          h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="Manifest pins" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">' + svgPin(12, 12) + '</button>';
         }
-        h += '<div class="luma-lua-pin-menu" data-lua-pin-menu="' + esc(f.appId) + '" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;background:#1b2838;border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);text-align:left;">';
-        h += '<button data-lua-pin-action="current" data-app="' + esc(f.appId) + '" style="display:' + (installed ? 'block' : 'none') + ';width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u{1F4CC} Pin to Current Version</button>';
-        h += '<button data-lua-pin-action="latest" data-app="' + esc(f.appId) + '" style="display:block;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u{1F4CC} Pin to Latest Version</button>';
-        h += '<button data-lua-pin-action="unpin" data-app="' + esc(f.appId) + '" style="display:' + (hasPins ? 'block' : 'none') + ';width:100%;text-align:left;background:none;border:none;color:#e74c3c;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">\u26D4 Unpin</button>';
+        h += '<div class="luma-lua-pin-menu" data-lua-pin-menu="' + esc(f.appId) + '" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;background:var(--luma-ssh-bg-panel,#1b2838);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);text-align:left;">';
+        h += '<button data-lua-pin-action="current" data-app="' + esc(f.appId) + '" style="display:' + (installed ? 'flex' : 'none') + ';align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + 'Pin to Current Version</button>';
+        h += '<button data-lua-pin-action="latest" data-app="' + esc(f.appId) + '" style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + 'Pin to Latest Version</button>';
+        h += '<button data-lua-pin-action="unpin" data-app="' + esc(f.appId) + '" style="display:' + (hasPins ? 'flex' : 'none') + ';align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#e74c3c;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + 'Unpin</button>';
         h += '</div>';
         h += '</div>';
-        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="Remove Lua script" style="background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 7px;color:#e74c3c;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;">\u{1F5D1}\u{FE0F}</button>';
+        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="Remove Lua script" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 7px;color:#e74c3c;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;">' + svgTrash(12, 12) + '</button>';
         h += '</div>';
       }
       luaContainer.innerHTML = h;
@@ -647,12 +651,12 @@ function paintLuaCards(): void {
                   }
                   setTimeout(function() { loadLuaCards(); }, 350);
                 } else {
-                  (btn as HTMLButtonElement).textContent = '\u{1F5D1}\u{FE0F}';
+                  (btn as HTMLButtonElement).innerHTML = svgTrash(12, 12);
                   (btn as HTMLButtonElement).disabled = false;
                 }
               })
               .catch(function() {
-                (btn as HTMLButtonElement).textContent = '\u{1F5D1}\u{FE0F}';
+                (btn as HTMLButtonElement).innerHTML = svgTrash(12, 12);
                 (btn as HTMLButtonElement).disabled = false;
               });
           });
@@ -705,18 +709,23 @@ function renderProvidersTab(container: HTMLElement) {
         }
 
         if (p.id !== 'steamkeys') {
-          // Row 3: API Key + Test + Get Key link
+          // Row 3: API Key + Test + Get Key link. Show the masked stored key
+          // as the VALUE (the field used to render empty despite a saved key);
+          // save/test treat an unchanged masked value as "keep stored key".
+          var maskedVal = p.hasKey ? (p.maskedKey || '') : '';
           h += '<div style="display:flex;align-items:center;gap:6px;">';
           h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">Key</label>';
-          h += '<input type="password" data-provider-key="' + i + '" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'Enter API key') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
+          h += '<input type="password" data-provider-key="' + i + '" data-masked-key="' + esc(p.maskedKey || '') + '" value="' + esc(maskedVal) + '" placeholder="' + (p.hasKey ? p.maskedKey : 'Enter API key') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
           h += '<button class="luma-sidebar-btn secondary" data-test-btn="' + i + '" style="padding:4px 8px;font-size:10px;">Test</button>';
           h += '</div>';
 
-          // Get API Key link
+          // Get API Key — opens the SYSTEM browser via the bridge (a
+          // target=_blank anchor from steamloopback pops Steam's own window,
+          // which fails DNS on dead hostnames)
           var keyUrl = getKeyUrl(p.id);
           if (keyUrl) {
             h += '<div style="text-align:right;">';
-            h += '<a href="' + keyUrl + '" target="_blank" rel="noopener" style="font-size:10px;color:#66c0ff;text-decoration:none;">Get API Key \u2197</a>';
+            h += '<button class="luma-sidebar-btn secondary" data-getkey="' + i + '" data-key-url="' + esc(keyUrl) + '" style="padding:3px 8px;font-size:10px;">Get API Key \u2197</button>';
             h += '</div>';
           }
         }
@@ -749,6 +758,23 @@ function renderProvidersTab(container: HTMLElement) {
         });
       });
 
+      // Wire up Get API Key → system browser via bridge
+      container.querySelectorAll('[data-getkey]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var u = btn.getAttribute('data-key-url');
+          if (!u) return;
+          retryFetch(openUrlApi(), {
+            method: 'POST',
+            mode: 'cors',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: u })
+          }, 'open-getkey', {})
+            .then(function(r) { return r.json(); })
+            .catch(function() {});
+        });
+      });
+
       // Wire up save
       var saveBtn = document.getElementById('luma-providers-save');
       if (saveBtn) saveBtn.addEventListener('click', function() { saveProviders(container); });
@@ -776,11 +802,23 @@ function getKeyUrl(providerId: string): string {
     'steamunlocked': 'https://steamunlocked.co',
     'steamgg': 'https://steamgg.net',
     'goggg': 'https://goggg.net',
-    'hubcapdb': 'https://www.hubcapdb.com',
+    // www.hubcapdb.com has no DNS — the API keys live on hubcapmanifest.com
+    'hubcapdb': 'https://hubcapmanifest.com/api-keys/stats',
+    'ryuu': 'https://generator.ryuu.lol/api',
     'steamdb': 'https://steamdb.info',
     'csrin': 'https://cs.rin.ru',
   };
   return urls[providerId] || '';
+}
+
+// Key field value → payload apiKey. Empty or the unchanged masked stored key
+// means "keep what's saved" (backend preserves nil/empty apiKey on POST).
+function providerKeyValue(keyInput: HTMLInputElement | null): string | undefined {
+  if (!keyInput) return undefined;
+  var v = keyInput.value;
+  if (!v) return undefined;
+  if (v === keyInput.getAttribute('data-masked-key')) return undefined;
+  return v;
 }
 
 function testProvider(container: HTMLElement, idx: number) {
@@ -792,7 +830,7 @@ function testProvider(container: HTMLElement, idx: number) {
   var providerId = row.getAttribute('data-provider-id');
 
   if (statusEl) statusEl.textContent = 'Testing...';
-  statusEl.style.color = '#66c0ff';
+  statusEl.style.color = 'var(--luma-ssh-accent,#66c0ff)';
 
   retryFetch(bridgeUrl('/api/settings/test-key'), {
     method: 'POST',
@@ -802,7 +840,7 @@ function testProvider(container: HTMLElement, idx: number) {
     body: JSON.stringify({
       providerId: providerId,
       baseUrl: urlInput ? urlInput.value : '',
-      apiKey: keyInput && keyInput.value ? keyInput.value : undefined
+      apiKey: providerKeyValue(keyInput)
     })
   }, 'sidebar-test-' + idx, {})
     .then(function(r) { return r.json(); })
@@ -838,7 +876,8 @@ function saveProviders(container: HTMLElement) {
       name: nameAttr || (id!.charAt(0).toUpperCase() + id!.slice(1)),
       enabled: enabled,
       baseUrl: urlInput ? urlInput.value : '',
-      apiKey: keyInput && keyInput.value ? keyInput.value : undefined
+      // Unchanged masked value → nil → backend keeps the stored key
+      apiKey: providerKeyValue(keyInput)
     });
   });
 
@@ -962,7 +1001,7 @@ function renderDownloadsTab(container: HTMLElement) {
       hHtml += '<div style="height:100%;width:' + pct + '%;background:' + statusColor + ';border-radius:2px;"></div>';
       hHtml += '</div>';
       if (isPaused) {
-        hHtml += '<button data-resume-history="' + h + '" data-resume-type="' + hist.type + '" data-resume-appid="' + hist.appId + '" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;border:1px solid rgba(102,192,255,.3);background:rgba(102,192,255,.1);color:#66c0ff;font-size:10px;font-weight:600;cursor:pointer;">' + svgPlay() + ' Resume</button>';
+        hHtml += '<button data-resume-history="' + h + '" data-resume-type="' + hist.type + '" data-resume-appid="' + hist.appId + '" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));background:var(--luma-ssh-a10,rgba(102,192,255,.1));color:var(--luma-ssh-accent,#66c0ff);font-size:10px;font-weight:600;cursor:pointer;">' + svgPlay() + ' Resume</button>';
       }
       hHtml += '</div>';
     }
@@ -1145,10 +1184,10 @@ function renderActiveCard(opts: {
   var pct = Math.max(0, Math.min(100, opts.progress || 0));
   var isAnimating = opts.status === 'downloading' || opts.status === 'resolving' || opts.status === 'extracting' || opts.status === 'processing' || opts.status === 'queued' || opts.status === 'interrupted';
 
-  var h = '<div style="position:relative;border-radius:10px;overflow:hidden;margin-bottom:10px;background:linear-gradient(135deg,#1b2838,#0e1721);border:1px solid rgba(102,192,255,.1);min-height:120px;">';
+  var h = '<div style="position:relative;border-radius:10px;overflow:hidden;margin-bottom:10px;background:linear-gradient(135deg,var(--luma-ssh-bg-panel,#1b2838),var(--luma-ssh-bg-panel-2,#0e1721));border:1px solid var(--luma-ssh-a10,rgba(102,192,255,.1));min-height:120px;">';
 
   // Gradient overlay
-  h += '<div style="position:absolute;inset:0;background:linear-gradient(135deg,rgba(102,192,255,.05),transparent 60%);pointer-events:none;"></div>';
+  h += '<div style="position:absolute;inset:0;background:linear-gradient(135deg,var(--luma-ssh-a05,rgba(102,192,255,.05)),transparent 60%);pointer-events:none;"></div>';
 
   // Content
   h += '<div style="position:relative;z-index:1;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">';
@@ -1176,7 +1215,7 @@ function renderActiveCard(opts: {
   // Progress bar
   h += '<div style="height:5px;background:rgba(255,255,255,.15);border-radius:3px;overflow:hidden;">';
   h += '<div style="height:100%;border-radius:3px;transform-origin:left;transition:transform .3s ease;transform:scaleX(' + (pct / 100) + ');';
-  h += isAnimating ? 'background:linear-gradient(90deg,#66c0ff,#67e8f9);' : 'background:#66c0ff;';
+  h += isAnimating ? 'background:linear-gradient(90deg,var(--luma-ssh-accent,#66c0ff),#67e8f9);' : 'background:var(--luma-ssh-accent,#66c0ff);';
   h += '"></div></div>';
 
   // Size info
@@ -1255,14 +1294,13 @@ function pollSourceDownloads(seq: number) {
           if (data.status === 'completed' || data.status === 'failed') {
             clearSpeedSamples(download.requestId);
             state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== download.requestId; });
-            // Source download history tracked in-memory (not in bridge queue)
-            state.downloadHistory.unshift({
+            // Source download history: local + pushed to the bridge so other
+            // origins (library window) render it too
+            addHistoryEntry({
               id: download.requestId, appId: download.appId, gameName: download.gameName,
               type: 'source', status: data.status, timestamp: Date.now(),
               progress: data.progress || 100, bytesDownloaded: data.bytesRead || data.bytesDownloaded || 0, totalBytes: data.totalBytes || 0,
             });
-            if (state.downloadHistory.length > 10) state.downloadHistory.length = 10;
-            saveSessionState();
             // Let the dashboard refresh lua cards / active list
             try { if (state.onDownloadSettled) state.onDownloadSettled(); } catch (_) {}
           }
@@ -1408,7 +1446,7 @@ function renderToolsTab(container: HTMLElement) {
         rows += badge(t.installedVersion ? 'Installed v' + t.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
       }
       if (t.updateAvailable && t.latestVersion) {
-        rows += badge('Update → ' + t.latestVersion, 'rgba(102,192,255,.15)', '#66c0ff');
+        rows += badge('Update → ' + t.latestVersion, 'var(--luma-ssh-a15,rgba(102,192,255,.15))', 'var(--luma-ssh-accent,#66c0ff)');
       }
       if (busy) {
         rows += badge(job.status === 'restarting' ? 'Restarting…' : (job.op + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
@@ -1424,7 +1462,7 @@ function renderToolsTab(container: HTMLElement) {
         if (job.status === 'running') {
           var pct = Math.max(0, Math.min(100, job.progress || 0));
           rows += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;">';
-          rows += '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#66c0ff,#67e8f9);border-radius:2px;transition:width .3s;"></div>';
+          rows += '<div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,var(--luma-ssh-accent,#66c0ff),#67e8f9);border-radius:2px;transition:width .3s;"></div>';
           rows += '</div>';
         }
       }
@@ -1672,13 +1710,13 @@ function renderSettingsTab(container: HTMLElement) {
   // ── Steam Account ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Steam Account</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">Steam Web API Key <span style="color:#66c0ff;">(Goldberg achievements)</span></div>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">Steam Web API Key <span style="color:var(--luma-ssh-accent,#66c0ff);">(Goldberg achievements)</span></div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:6px;">';
   html += '<input id="luma-steam-apikey" type="password" placeholder="Enter your Steam Web API key" style="flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;" />';
   html += '<button type="button" id="luma-steam-apikey-eye" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#8f98a0;font-size:11px;padding:0 10px;cursor:pointer;">Show</button>';
   html += '</div>';
-  html += '<button type="button" id="luma-steam-getkey" style="background:rgba(102,192,255,.1);border:1px solid rgba(102,192,255,.3);border-radius:6px;color:#66c0ff;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">Get API key \u2197</button>';
-  html += '<div style="font-size:11px;color:#8f98a0;margin:10px 0 4px;">SteamID64 <span style="color:#66c0ff;">(Voices38 / catalog fixes)</span></div>';
+  html += '<button type="button" id="luma-steam-getkey" style="background:var(--luma-ssh-a10,rgba(102,192,255,.1));border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));border-radius:6px;color:var(--luma-ssh-accent,#66c0ff);font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">Get API key \u2197</button>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin:10px 0 4px;">SteamID64 <span style="color:var(--luma-ssh-accent,#66c0ff);">(Voices38 / catalog fixes)</span></div>';
   html += '<input id="luma-steam-id64" type="text" placeholder="76561197960265728" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:8px;" />';
   html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">SteamID32 (Account ID)</div>';
   html += '<input id="luma-steam-id32" type="text" placeholder="12345678" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:10px;" />';
@@ -1799,7 +1837,7 @@ function wireSteamAccountSection(container: HTMLElement) {
   if (getkeyBtn) {
     getkeyBtn.addEventListener('click', function() {
       statusEl.textContent = 'Opening\u2026';
-      statusEl.style.color = '#66c0ff';
+      statusEl.style.color = 'var(--luma-ssh-accent,#66c0ff)';
       retryFetch(openUrlApi(), {
         method: 'POST',
         mode: 'cors',
@@ -1821,7 +1859,7 @@ function wireSteamAccountSection(container: HTMLElement) {
 
   if (detectBtn) {
     detectBtn.addEventListener('click', function() {
-      accountsEl.innerHTML = '<div style="font-size:11px;color:#66c0ff;">Scanning loginusers.vdf\u2026</div>';
+      accountsEl.innerHTML = '<div style="font-size:11px;color:var(--luma-ssh-accent,#66c0ff);">Scanning loginusers.vdf\u2026</div>';
       fetch(steamAccountDetectUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
@@ -2528,7 +2566,7 @@ export function openSidebar(initialTab?: string) {
   panel.id = SIDEBAR_ID;
   panel.setAttribute('style',
     'position:fixed;top:0;right:0;width:440px;height:100vh;' +
-    'background:#1b2838;border-left:1px solid rgba(102,192,255,.12);' +
+    'background:var(--luma-ssh-bg-panel,#1b2838);border-left:1px solid var(--luma-ssh-a12,rgba(102,192,255,.12));' +
     'box-shadow:-8px 0 32px rgba(0,0,0,.5);z-index:10001;' +
     'display:flex;flex-direction:column;font-family:"Motiva Sans",Arial,sans-serif;' +
     'animation:luma_ssh_slide .2s ease;'
@@ -2536,7 +2574,10 @@ export function openSidebar(initialTab?: string) {
 
   var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.15);">';
   headerHtml += '<div style="font-size:15px;font-weight:700;color:#fff;">LumaForge <span style="font-size:10px;color:#8f98a0;font-weight:400;">v' + LUMA_VERSION + '</span></div>';
-  headerHtml += '<button class="luma-ssh-close-btn" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgX() + '</button>';
+  headerHtml += '<div style="display:flex;align-items:center;gap:6px;">';
+  headerHtml += '<button id="luma-sidebar-refresh" class="luma-ssh-close-btn" title="Refresh current tab" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgRefresh() + '</button>';
+  headerHtml += '<button id="luma-sidebar-close" class="luma-ssh-close-btn" title="Close" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgX() + '</button>';
+  headerHtml += '</div>';
   headerHtml += '</div>';
 
   var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;overflow-x:auto;scrollbar-width:none;">';
@@ -2558,8 +2599,11 @@ export function openSidebar(initialTab?: string) {
   document.body.appendChild(backdrop);
   document.body.appendChild(panel);
 
-  var closeBtn = panel.querySelector('.luma-ssh-close-btn');
+  var closeBtn = document.getElementById('luma-sidebar-close');
   if (closeBtn) closeBtn.addEventListener('click', closeSidebar);
+
+  var refreshHeaderBtn = document.getElementById('luma-sidebar-refresh');
+  if (refreshHeaderBtn) refreshHeaderBtn.addEventListener('click', function () { renderTabContent(state.currentTab); });
 
   var tabBtns = panel.querySelectorAll('.luma-sidebar-tab');
   for (var j = 0; j < tabBtns.length; j++) {
