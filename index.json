@@ -5,14 +5,14 @@
   "description": "Official extensions maintained by the LumaForge team",
   "maintainer": "LumaForge Team",
   "version": "1.0.0",
-  "updatedAt": "2026-09-26T00:00:00Z",
+  "updatedAt": "2026-09-29T00:00:00Z",
   "extensions": [
     {
       "id": "steam-store-helper",
       "name": "steam-store-helper",
       "displayName": "Steam Store Package Helper",
       "description": "Injects asset download controls directly into the official Steam Store action bar via standalone WebSockets.",
-      "version": "2.6.2",
+      "version": "2.6.3",
       "author": "LumaForge",
       "categories": ["steam", "tools"],
       "manifestUrl": "extensions/steam-store-helper/manifest.json",
