@@ -54,9 +54,9 @@ export function updateFixesButton(appId: string): void {
   try {
     var mainBtn = document.getElementById(BTN_ID);
     var existing = document.getElementById(FIXES_BTN_ID);
-    var installed = !!mainBtn &&
-      mainBtn.getAttribute(BTN_APPID_ATTR) === appId &&
-      mainBtn.getAttribute(BTN_STATE_ATTR) === 'installed';
+    var mainState = mainBtn && mainBtn.getAttribute(BTN_APPID_ATTR) === appId
+      ? mainBtn.getAttribute(BTN_STATE_ATTR) : null;
+    var installed = mainState === 'installed' || mainState === 'installed-no-lua';
 
     if (!installed) {
       if (existing) existing.remove();
@@ -155,6 +155,16 @@ export function applyInstalledState(appId: string): void {
   setButtonLumaState(appId, 'installed');
   updateFixesButton(appId);
   console.log('[LUMA_INJECT] App', appId, 'content installed (blocked)');
+}
+
+// Installed content but no Lua file (deleted / never added): the button stays
+// active so the user can re-download the Lua via the source modal, and FIXES
+// remains available because the game content is on disk.
+export function applyInstalledNoLuaState(appId: string): void {
+  setButtonState(appId, ST.btn, svgDownload(14, 14) + '<span>ADD VIA LUMAFORGE</span>', false);
+  setButtonLumaState(appId, 'installed-no-lua');
+  updateFixesButton(appId);
+  console.log('[LUMA_INJECT] App', appId, 'content installed, no Lua (ADD VIA LUMAFORGE)');
 }
 
 export function applyInstallingState(appId: string): void {
@@ -286,8 +296,11 @@ export function handleLocalStatusResult(appId: string, err: any, data: any): voi
     if (state.installingAppIds[appId]) {
       applyInstallingState(appId);
       removeFixesButton();
-    } else if (installed) {
+    } else if (installed && inLibrary) {
       applyInstalledState(appId);
+    } else if (installed) {
+      // Content on disk but Lua deleted/never added → allow re-download.
+      applyInstalledNoLuaState(appId);
     } else if (inLibrary) {
       applyInLibraryState(appId);
       removeFixesButton();

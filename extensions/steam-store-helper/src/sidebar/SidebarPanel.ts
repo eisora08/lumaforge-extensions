@@ -28,6 +28,8 @@ var _luaFiles: any[] = [];
 var _luaPins: any = {};
 var _luaQuery = '';
 var _luaSort = 'name-asc';
+var _luaFilter = 'all'; // 'all' | 'installed' | 'not-installed'
+var _luaSelectVal = 'name-asc'; // last option chosen in the Show/Sort select
 
 // Cloud Saves tab state (persists across tab switches)
 var _cloudsavePollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -241,14 +243,21 @@ function renderDashboardTab(container: HTMLElement) {
   html += '<div class="luma-sidebar-section" id="luma-dash-active-section" style="' + ((state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0) ? '' : 'display:none;') + '"><div class="luma-sidebar-section-title">Active Now</div><div id="luma-dash-active"></div></div>';
 
   // Lua Scripts section — flex:1 reaches the sidebar footer, scrolls internally
-  html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" style="flex-shrink:0;">Lua Scripts</div>';
+  html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" id="luma-dash-lua-title" style="flex-shrink:0;">Lua Scripts</div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-shrink:0;">';
   html += '<input id="luma-lua-search" type="text" placeholder="Search\u2026" value="' + esc(_luaQuery) + '" style="flex:1 1 auto;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;" />';
-  html += '<select id="luma-lua-sort" style="flex:0 0 96px;width:96px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 6px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;">';
-  html += '<option value="name-asc"' + (_luaSort === 'name-asc' ? ' selected' : '') + '>Name A-Z</option>';
-  html += '<option value="name-desc"' + (_luaSort === 'name-desc' ? ' selected' : '') + '>Name Z-A</option>';
-  html += '<option value="newest"' + (_luaSort === 'newest' ? ' selected' : '') + '>Newest</option>';
-  html += '<option value="oldest"' + (_luaSort === 'oldest' ? ' selected' : '') + '>Oldest</option>';
+  html += '<select id="luma-lua-sort" style="flex:0 0 106px;width:106px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 6px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;">';
+  html += '<optgroup label="Show">';
+  html += '<option value="all"' + (_luaSelectVal === 'all' ? ' selected' : '') + '>All</option>';
+  html += '<option value="installed"' + (_luaSelectVal === 'installed' ? ' selected' : '') + '>Installed</option>';
+  html += '<option value="not-installed"' + (_luaSelectVal === 'not-installed' ? ' selected' : '') + '>Not installed</option>';
+  html += '</optgroup>';
+  html += '<optgroup label="Sort">';
+  html += '<option value="name-asc"' + (_luaSelectVal === 'name-asc' ? ' selected' : '') + '>Name A-Z</option>';
+  html += '<option value="name-desc"' + (_luaSelectVal === 'name-desc' ? ' selected' : '') + '>Name Z-A</option>';
+  html += '<option value="newest"' + (_luaSelectVal === 'newest' ? ' selected' : '') + '>Newest</option>';
+  html += '<option value="oldest"' + (_luaSelectVal === 'oldest' ? ' selected' : '') + '>Oldest</option>';
+  html += '</optgroup>';
   html += '</select>';
   html += '</div>';
   html += '<div id="luma-dash-lua-container" style="flex:1;min-height:0;overflow-y:auto;padding-right:4px;">';
@@ -264,7 +273,13 @@ function renderDashboardTab(container: HTMLElement) {
   if (searchEl) searchEl.addEventListener('input', function() { _luaQuery = searchEl.value; paintLuaCards(); });
 
   var sortEl = document.getElementById('luma-lua-sort') as HTMLSelectElement | null;
-  if (sortEl) sortEl.addEventListener('change', function() { _luaSort = sortEl.value; paintLuaCards(); });
+  if (sortEl) sortEl.addEventListener('change', function() {
+    var v = sortEl.value;
+    _luaSelectVal = v;
+    if (v === 'all' || v === 'installed' || v === 'not-installed') _luaFilter = v;
+    else _luaSort = v;
+    paintLuaCards();
+  });
 
   // Fetch provider stats
   fetch(bridgeUrl('/api/provider-stats'), { method: 'GET', mode: 'cors', cache: 'no-store' })
@@ -462,6 +477,9 @@ function paintLuaCards(): void {
   var luaContainer = document.getElementById('luma-dash-lua-container');
   if (!luaContainer) return;
 
+  var titleEl = document.getElementById('luma-dash-lua-title');
+  if (titleEl) titleEl.textContent = 'Lua Scripts (' + _luaFiles.length + ')';
+
   var pins = _luaPins;
   var q = _luaQuery.trim().toLowerCase();
   var files = _luaFiles.slice();
@@ -470,6 +488,14 @@ function paintLuaCards(): void {
       return String(f.name || '').toLowerCase().indexOf(q) !== -1 ||
              String(f.appId || '').indexOf(q) !== -1 ||
              String(f.filename || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+  if (_luaFilter !== 'all') {
+    files = files.filter(function(f: any) {
+      var pin = pins[f.appId] || null;
+      var catRow = catalogRow(f.appId);
+      var inst = !!(pin && pin.installed) || !!(catRow && catRow.installed);
+      return _luaFilter === 'installed' ? inst : !inst;
     });
   }
   files.sort(function(a: any, b: any) {
