@@ -1,6 +1,6 @@
 import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
 import { abortPendingRequests, cancelAllRetries, removeButton, syncNamespaceState, ensureLumaButtonExists, setButtonState, setButtonLumaState, checkLocalStatus, handleLocalStatusResult } from '../ui/button';
-import { ST, ensureBtnStates } from '../ui/styles';
+import { ST, ensureBtnStates, ensureKeyframes } from '../ui/styles';
 import { svgSpinner } from '../ui/svg';
 import { ensureSettingsButton } from '../modals/settings';
 import { closeModal, openSourceModal, stopDownloadPoll } from '../modals/source';
@@ -66,6 +66,11 @@ export function activate(): void {
     patchHistory();
     setupEventDelegation();
     ensureBtnStates();
+    // Modal styling must not depend on opening the sidebar: on the library
+    // surface ensureLumaButtonExists() returns early, so this is the only
+    // place keyframes/box-sizing get installed — without it the fixes modal
+    // renders unstyled (Close clipped at the right edge).
+    ensureKeyframes();
     startObserver();
     if (isLibrarySurface()) startManageMenu();
     ensureLumaButtonExists();

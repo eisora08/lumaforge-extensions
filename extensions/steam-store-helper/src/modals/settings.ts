@@ -13,17 +13,27 @@ var _settingsBtnHasDownloads = false;
 // The floating gear must only exist on real surfaces (library main window,
 // store pages). Context menus / notifications / supernavs inherit the
 // steamloopback origin and run this script too — popups must stay clean, and
-// so do the splash/tracking windows (about:blank, data:, steamloopback docs
-// without the #library root — the splash logo window never mounts the SPA).
+// so do the splash/tracking windows (about:blank, data:, 1x1 SharedJSContext).
+//
+// Positive detection: the real Steam window mounts a FocusNavigationRoot
+// inside #popup_target — menus/supernavs do not (verified live: only the
+// main window has it). #library alone is NOT reliable: current Steam builds
+// never create an element with that id (it only appears when a theme's
+// sidebar happens to define one), so it can't be the primary signal.
 function isTransientSurface(): boolean {
   try {
     var body = document.body;
     if (!body) return true;
-    if ((body.className || '').indexOf('ContextMenuPopupBody') !== -1) return true;
+    var cls = body.className || '';
+    if (cls.indexOf('ContextMenuPopupBody') !== -1) return true;
+    if (cls.indexOf('GamepadUI') !== -1) return true;
     if (window.innerWidth < 480 || window.innerHeight < 400) return true;
     var host = location.hostname;
     if (host === 'store.steampowered.com') return false;
-    if (host === 'steamloopback.host') return !document.getElementById('library');
+    if (host === 'steamloopback.host') {
+      if (document.getElementById('library')) return false;
+      return !document.querySelector('#popup_target [class*="FocusNavigationRoot"]');
+    }
     return true;
   } catch (_) { }
   return false;
@@ -40,8 +50,11 @@ export function ensureSettingsButton(): void {
     btn.setAttribute('aria-label', 'LumaForge');
     btn.title = 'LumaForge';
     btn.innerHTML = svgGear();
+    // Store pages have no bottom bar → sit at 16px like always. The library
+    // main window has a 50px bottom bar (Friends & Chat) → 66px clears it.
+    var bottomPx = (location.hostname === 'store.steampowered.com') ? '16px' : '66px';
     btn.setAttribute('style',
-      'position:fixed;bottom:16px;right:16px;z-index:2147483647;' +
+      'position:fixed;bottom:' + bottomPx + ';right:16px;z-index:2147483647;' +
       'width:36px;height:36px;border-radius:50%;' +
       'background:rgba(30,30,40,.85);border:1px solid rgba(255,255,255,.15);' +
       'color:rgba(255,255,255,.6);cursor:pointer;display:flex;align-items:center;justify-content:center;' +

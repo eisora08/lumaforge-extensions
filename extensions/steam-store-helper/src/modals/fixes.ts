@@ -1,6 +1,6 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION } from '../core/state';
 import { svgBox, svgX, svgSpinner, svgErrorCircle, svgCheck, svgGear, svgLock, svgCloudDownload, svgCheckSmall, svgRefresh } from '../ui/svg';
-import { ST } from '../ui/styles';
+import { ST, ensureKeyframes } from '../ui/styles';
 import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody } from '../ui/helpers';
 import { escapeHtml } from '../ui/dom';
 import { closeModal } from './source';
@@ -83,6 +83,7 @@ function toolInstalled(status: any, key: string | null): boolean {
 export function openFixesModal(appId: string): void {
   try {
     closeModal();
+    ensureKeyframes();
 
     state.savedFocusElement = document.activeElement;
     state.fixesModalState = {
