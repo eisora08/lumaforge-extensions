@@ -408,6 +408,17 @@ export function renderSources(
       var sourceName = source.name || sourceId || 'Provider';
       var reason = source.detail || 'Package not available';
       var pstat = findProviderStat(sourceId);
+      var keyBlocked =
+        source.keyError === true ||
+        (pstat && pstat.keyState === 'expired');
+      if (
+        keyBlocked &&
+        (!source.detail ||
+          source.detail === 'Package available' ||
+          source.detail === 'Package not available')
+      ) {
+        reason = 'API key expired or invalid';
+      }
 
       var card = document.createElement('div');
       card.className = 'luma-source-card blocked';
@@ -469,6 +480,13 @@ export function renderSources(
           });
           info.appendChild(usageLine);
         }
+      } else if (pstat && pstat.keyState === 'expired') {
+        // Stats endpoint rejected the key (400/401/403): no expiry date is
+        // available, but the key is known to be dead — show it anyway.
+        var keyStateBadge = document.createElement('div');
+        keyStateBadge.className = 'luma-source-expiry expired';
+        keyStateBadge.textContent = 'API Key Expired';
+        info.appendChild(keyStateBadge);
       } else if (pstat && !pstat.hasKey) {
         var noKeyLine = document.createElement('div');
         noKeyLine.setAttribute('style', 'font-size:10px;color:var(--luma-ssh-error,#e74c3c);margin-top:3px;');
@@ -478,8 +496,8 @@ export function renderSources(
 
       var badge = document.createElement('div');
       badge.setAttribute('data-lumaforge-source-badge', 'true');
-      badge.setAttribute('style', ST.badgeUnavail);
-      badge.innerHTML = svgLock() + '<span>Unavailable</span>';
+      badge.setAttribute('style', keyBlocked ? ST.badgeError : ST.badgeUnavail);
+      badge.innerHTML = svgLock() + '<span>' + (keyBlocked ? (reason.indexOf('No API key') === 0 ? 'No API Key' : 'API Expired') : 'Unavailable') + '</span>';
 
       var tooltip = document.createElement('div');
       tooltip.className = 'luma-source-tooltip';
@@ -662,6 +680,26 @@ export function renderSources(
         }
       }
 
+      // Expired/invalid key: surface it and block selection even when the
+      // package check itself succeeded (applies to every provider — hubcap,
+      // ryuu, custom — via stats keyState or the backend keyError flag).
+      var keyExpired = src.keyError === true;
+      var expStat = findProviderStat(src.id);
+      if (expStat) {
+        if (expStat.keyState === 'expired') keyExpired = true;
+        else if (expStat.apiKeyExpiresAt) {
+          var statExpMs = Date.parse(expStat.apiKeyExpiresAt);
+          if (Number.isFinite(statExpMs) && statExpMs <= Date.now()) keyExpired = true;
+        }
+      }
+      if (keyExpired) {
+        selectable = false;
+        // When the backend flagged the problem it already sends the precise
+        // reason (expired vs never configured) — only replace generic texts.
+        if (!src.keyError) detail.textContent = 'API key expired or invalid \u2014 update it in Providers';
+        card.setAttribute('style', 'opacity:.45;cursor:default;');
+      }
+
       if (src.id === 'steamkeys') {
         var autofetchWrap = document.createElement('label');
         autofetchWrap.id = 'luma-sk-autofetch-wrap';
@@ -685,6 +723,16 @@ export function renderSources(
         badge.innerHTML =
           dot('green') +
           '<span>Ready</span>';
+      } else if (keyExpired) {
+        var expiredNoKey = src.keyError === true && !!src.detail && src.detail.indexOf('No API key') === 0;
+        badge.setAttribute(
+          'style',
+          ST.badgeError
+        );
+
+        badge.innerHTML =
+          dot('red') +
+          '<span>' + (expiredNoKey ? 'No API Key' : 'API Expired') + '</span>';
       } else if (avail) {
         badge.setAttribute(
           'style',

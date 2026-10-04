@@ -122,6 +122,80 @@ var SURFACE_CANDIDATES = [
   '--background-col'
 ];
 
+// Tier 2: themes that don't expose standard surface variables (Minimal-Dark,
+// Adwaita, zehn...) declare their own palette on :root. Scan accessible
+// stylesheets for those custom properties and score the names for
+// "surface-like" semantics. Our own --luma-ssh-* vars are excluded so we
+// never pick up our fallback defaults.
+var SURFACE_POS = /(background|bg|window|surface|base|black|darker|grey|gray|neutral)/;
+var SURFACE_NEG = /(accent|text|fg|foreground|highlight|hover|active|border|shadow|selection|link|button|progress|status|corner|radius|font|icon|_rgb|^rgb|red|green|blue|yellow|orange|purple|pink|cyan|magenta)/;
+
+function surfaceNameScore(name: string): number {
+  if (name.indexOf('--') !== 0) return -1;
+  if (name.indexOf('--luma-ssh-') === 0) return -1;
+  if (SURFACE_NEG.test(name)) return -1;
+  if (!SURFACE_POS.test(name)) return -1;
+  var score = 1;
+  if (/(background|window|surface)/.test(name)) score += 2;
+  if (/(black|darker)/.test(name)) score += 1;
+  return score;
+}
+
+// Collect custom properties declared on :root/html rules of every
+// stylesheet we can read (the proxy injects the active theme's CSS as
+// same-origin <style> elements, so its palette is reachable).
+function scanThemeSurface(): RGB | null {
+  var best: RGB | null = null;
+  var bestScore = 0;
+  var bestLen = 0;
+  var sheets: any[] = [];
+  try {
+    sheets = Array.prototype.slice.call(document.styleSheets);
+  } catch (e) { return null; }
+
+  for (var i = 0; i < sheets.length; i++) {
+    var rules: CSSRuleList | null = null;
+    try { rules = sheets[i].cssRules; } catch (e) { continue; }
+    if (!rules) continue;
+    for (var j = 0; j < rules.length; j++) {
+      var rule: any = rules[j];
+      try {
+        var sel = rule.selectorText || '';
+        if (!/(^|,)\s*(:root|html)\s*(,|$)/.test(sel) || !rule.style) continue;
+        for (var k = 0; k < rule.style.length; k++) {
+          var prop = rule.style[k];
+          if (typeof prop !== 'string' || prop.indexOf('--') !== 0) continue;
+          var score = surfaceNameScore(prop);
+          if (score < 1) continue;
+          var c = parseColor(rule.style.getPropertyValue(prop));
+          if (!c || c.a < 0.85 || luminance(c) >= 0.5) continue;
+          if (
+            score > bestScore ||
+            (score === bestScore && (best === null || prop.length < bestLen))
+          ) {
+            best = c;
+            bestScore = score;
+            bestLen = prop.length;
+          }
+        }
+      } catch (e) { }
+    }
+  }
+  return best;
+}
+
+// Tier 3: the page body's computed background (themes that paint the window
+// without surface variables still land here — e.g. Minimal-Dark body is
+// #121212). Opaque and dark only, same gate as everywhere else.
+function bodySurface(): RGB | null {
+  try {
+    if (!document.body) return null;
+    var c = parseColor(getComputedStyle(document.body).backgroundColor);
+    if (c && c.a >= 0.85 && luminance(c) < 0.5) return c;
+  } catch (e) { }
+  return null;
+}
+
 // Read a color candidate from BOTH documentElement and body (some themes
 // define variables on body only; both inherit either way, so first hit wins).
 function firstColorVarBoth(names: string[]): RGB | null {
@@ -166,9 +240,12 @@ export function resolveThemeColors(): void {
     }
 
     // Panel background: adopt the theme's base surface so the panel matches
-    // the active theme instead of the hardcoded navy gradient. Only dark
-    // themes apply (light panels would clash with dark card/text defaults).
-    var surface = firstColorVarBoth(SURFACE_CANDIDATES);
+    // the active theme instead of the hardcoded navy gradient. Resolution in
+    // tiers — standard variables (fluenty), then the theme's own :root
+    // palette (Minimal-Dark, Adwaita...), then the body's computed
+    // background. Only dark surfaces apply (light panels would clash with
+    // dark card/text defaults).
+    var surface = firstColorVarBoth(SURFACE_CANDIDATES) || scanThemeSurface() || bodySurface();
     if (surface && luminance(surface) < 0.5) {
       set('--luma-ssh-bg-panel', rgba(surface, 1));
       set('--luma-ssh-bg-panel-1', shade(surface, 0.06));   // gradient top (lighter)

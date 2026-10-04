@@ -222,6 +222,11 @@ local function get_provider_stats()
                     log("[steam-store-helper] HubcapDB: failed to parse user stats response")
                 end
             else
+                -- Stats rejected: surface it so the source card can show the
+                -- key problem instead of a plain "Available" state.
+                if status == 400 or status == 401 or status == 403 then
+                    entry.keyState = "expired"
+                end
                 log("[steam-store-helper] HubcapDB user stats request failed: HTTP " .. tostring(status))
             end
         end
@@ -273,9 +278,20 @@ local function handle_sources(app_id)
         if api.enabled then
             local avail, url, status = check_provider_available(api, app_id)
             local detail_msg
+            local key_error = false
             if api.id == "steamkeys" then
                 has_steamkeys = true
                 detail_msg = "Generate .lua \226\128\148 Pin \226\128\148 Fetch"
+            elseif status == 400 or status == 401 or status == 403 then
+                -- Auth failures mean the credential is bad, not the package:
+                -- label them as key problems so the UI shows the real cause.
+                -- Distinguish "never configured" from "expired/invalid".
+                if not api.api_key or api.api_key == "" then
+                    detail_msg = "No API key configured"
+                else
+                    detail_msg = "API key expired or invalid"
+                end
+                key_error = true
             elseif avail then
                 detail_msg = "Package available"
             elseif status == 0 then
@@ -293,6 +309,7 @@ local function handle_sources(app_id)
                 available = avail,
                 selectable = avail,
                 detail = detail_msg,
+                keyError = key_error,
                 total = 0
             }
             if avail then
@@ -726,6 +743,19 @@ routes["POST /api/settings/test-key"] = function(req)
         }
     end
 
+    -- No key available (neither typed nor stored): fail fast instead of
+    -- sending an unauthenticated request that some endpoints answer 200 to.
+    if not api_key or api_key == "" then
+        return {
+            status = 200,
+            body = json_encode({
+                ok = false,
+                message = "No API key entered"
+            }),
+            contentType = "application/json"
+        }
+    end
+
     -- Build test URL based on provider
     local test_url = nil
     local headers = {}
@@ -750,7 +780,9 @@ routes["POST /api/settings/test-key"] = function(req)
     local resp = http_get_headers(test_url, headers, 15)
     local status = resp.status or 0
 
-    if status >= 200 and status < 500 then
+    -- Only 2xx proves the credential works: providers answer 400/401 for
+    -- expired or invalid keys (a previous check counted 4xx as valid).
+    if status >= 200 and status < 300 then
         return {
             status = 200,
             body = json_encode({
@@ -759,16 +791,28 @@ routes["POST /api/settings/test-key"] = function(req)
             }),
             contentType = "application/json"
         }
-    else
-        return {
-            status = 200,
-            body = json_encode({
-                ok = false,
-                message = "API key test failed (HTTP " .. tostring(status) .. ")"
-            }),
-            contentType = "application/json"
-        }
     end
+
+    local msg
+    if status == 0 then
+        msg = "Provider unreachable"
+    elseif status == 400 or status == 401 or status == 403 then
+        msg = "API key invalid or expired (HTTP " .. tostring(status) .. ")"
+    elseif status >= 500 then
+        msg = "Server error (HTTP " .. tostring(status) .. ")"
+    elseif status >= 400 then
+        msg = "Request failed (HTTP " .. tostring(status) .. ")"
+    else
+        msg = "Unexpected response (HTTP " .. tostring(status) .. ")"
+    end
+    return {
+        status = 200,
+        body = json_encode({
+            ok = false,
+            message = msg
+        }),
+        contentType = "application/json"
+    }
 end
 
 -- ---------------------------------------------------------------------------
