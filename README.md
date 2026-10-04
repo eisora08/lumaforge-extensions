@@ -6,7 +6,7 @@ Official extension repository for [LumaForge](https://github.com/eisora08/lumafo
 
 | Extension | ID | Version | Description |
 |-----------|-----|---------|-------------|
-| Steam Store Package Helper | `steam-store-helper` | 2.6.4 | Injects asset download controls into the Steam Store action bar |
+| Steam Store Package Helper | `steam-store-helper` | 2.6.5 | Injects asset download controls into the Steam Store action bar |
 
 ## Repository URL
 
