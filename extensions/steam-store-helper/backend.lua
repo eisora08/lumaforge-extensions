@@ -1208,15 +1208,68 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Bridge base URL (used by metadata, migration, and download functions)
+--
+-- The bridge may fall back to 21776 when 21775 is still held by a previous
+-- instance (TIME_WAIT), so a hardcoded 21775 fails for the whole session.
+-- The working port is cached after the first successful call and every
+-- request follows the bridge to its other port if the cached one dies.
 -- ---------------------------------------------------------------------------
-local BRIDGE_BASE = "http://127.0.0.1:21775"
+local bridge_port = nil
+
+local function bridge_url(port, path)
+    return "http://127.0.0.1:" .. port .. path
+end
+
+local function bridge_candidates()
+    if bridge_port then
+        local other = (bridge_port == 21775) and 21776 or 21775
+        return bridge_port, other
+    end
+    return 21775, 21776
+end
+
+local function bridge_request(is_post, path, payload, timeout)
+    local first, second = bridge_candidates()
+    local ok, resp
+    if is_post then
+        ok, resp = pcall(http_post, bridge_url(first, path), payload, timeout)
+    else
+        ok, resp = pcall(http_get, bridge_url(first, path), timeout)
+    end
+    if ok and resp then
+        -- Any HTTP response (even a 4xx) proves the port is alive.
+        if bridge_port ~= first then
+            bridge_port = first
+            log("[bridge] Using port " .. first)
+        end
+        return ok, resp
+    end
+    if is_post then
+        ok, resp = pcall(http_post, bridge_url(second, path), payload, timeout)
+    else
+        ok, resp = pcall(http_get, bridge_url(second, path), timeout)
+    end
+    if ok and resp then
+        bridge_port = second
+        log("[bridge] Switching to port " .. second)
+        return ok, resp
+    end
+    return ok, resp
+end
+
+local function bridge_get(path, timeout)
+    return bridge_request(false, path, nil, timeout)
+end
+
+local function bridge_post(path, payload, timeout)
+    return bridge_request(true, path, payload, timeout)
+end
 
 -- ---------------------------------------------------------------------------
 -- Load installed package metadata from Rust routes (bulk, once per run)
 -- ---------------------------------------------------------------------------
 local function load_bulk_metadata()
-    local url = BRIDGE_BASE .. "/api/package-metadata/all"
-    local ok, resp = pcall(http_get, url, 10)
+    local ok, resp = bridge_get("/api/package-metadata/all", 10)
     if not ok or not resp or not resp.ok then
         log("[auto-update] Failed to load bulk metadata: " .. tostring(resp and resp.body or "error"))
         return nil
@@ -1239,9 +1292,9 @@ local function migrate_header_to_rust(app_id, provider_id, header_raw, lua_filen
         headerRaw = header_raw,
         luaFilename = lua_filename
     })
-    local url = BRIDGE_BASE .. "/api/package-metadata/migrate"
+    local url = "/api/package-metadata/migrate"
     log("[auto-update] Migrating header for " .. app_id .. " via Rust")
-    local ok, resp = pcall(http_post, url, payload, 15)
+    local ok, resp = bridge_post(url, payload, 15)
     if not ok or not resp then
         log("[auto-update] Migration request failed: " .. tostring(resp))
         return nil
@@ -1449,10 +1502,10 @@ local function trigger_download(app_id, source_id, output_type, remote_context)
         end
     end
     local payload_str = json_encode(payload)
-    local post_url = BRIDGE_BASE .. "/api/download"
+    local post_url = "/api/download"
     log("[auto-update] POST " .. post_url .. " appId=" .. tostring(app_id))
 
-    local resp_ok, resp = pcall(http_post, post_url, payload_str, 30)
+    local resp_ok, resp = bridge_post(post_url, payload_str, 30)
     if not resp_ok or not resp then
         log("[auto-update] POST failed: " .. tostring(resp))
         return nil, "POST_FAILED"
@@ -1483,14 +1536,14 @@ end
 
 local function poll_download_status(request_id, max_wait_secs)
     max_wait_secs = max_wait_secs or 300
-    local status_url = BRIDGE_BASE .. "/api/download-status/" .. request_id
+    local status_url = "/api/download-status/" .. request_id
     local elapsed = 0
 
     while elapsed < max_wait_secs do
         sleep_ms(3000)
         elapsed = elapsed + 3
 
-        local resp_ok, resp = pcall(http_get, status_url, 10)
+        local resp_ok, resp = bridge_get(status_url, 10)
         if not resp_ok or not resp or not resp.ok then
             log("[auto-update] Poll failed (elapsed=" .. elapsed .. "s): " .. tostring(resp and resp.body or "error"))
         else
