@@ -263,7 +263,7 @@ export function openSettingsModal(): void {
     body.innerHTML =
       '<div style="' + ST.loading + '">' +
       svgSpinner() +
-      '<span style="' + ST.loadingText + '">Loading settings\u2026</span>' +
+      '<span style="' + ST.loadingText + '">' + t('Loading settings…') + '</span>' +
       '</div>';
 
     var footer = document.createElement('div');
@@ -315,7 +315,7 @@ export function openSettingsModal(): void {
         body.innerHTML =
           '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px 16px;color:rgba(255,255,255,.5);">' +
           svgErrorCircle() +
-          '<div>Failed to load settings: ' + (err.message || err) + '</div>' +
+          '<div>' + t('Failed to load settings') + ': ' + (err.message || err) + '</div>' +
           '</div>';
       });
   } catch (err) {
@@ -349,7 +349,7 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
 
     html += '<div style="display:flex;flex-direction:column;gap:6px;">';
     if (p.id === 'steamkeys') {
-      html += '<div style="font-size:11px;color:#64c882;">Local provider \u2014 no URL and no API key required (lua generation + manifest fetch)</div>';
+      html += '<div style="font-size:11px;color:#64c882;">' + t('Local provider — no URL and no API key required (lua generation + manifest fetch)') + '</div>';
     } else {
       html += '<div style="display:flex;align-items:center;gap:6px;">';
       html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">URL</label>';
@@ -357,8 +357,8 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
       html += '</div>';
       html += '<div style="display:flex;align-items:center;gap:6px;">';
       html += '<label style="font-size:11px;color:rgba(255,255,255,.5);width:60px;flex-shrink:0;">API Key</label>';
-      html += '<input id="' + keyId + '" data-provider-key type="password" value="" placeholder="' + (p.hasKey ? p.maskedKey : 'No key set') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
-      html += '<button data-test-btn type="button" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:5px 10px;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer;white-space:nowrap;">Test</button>';
+      html += '<input id="' + keyId + '" data-provider-key type="password" value="" placeholder="' + (p.hasKey ? p.maskedKey : t('No key set')) + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:rgba(255,255,255,.9);font-size:12px;font-family:monospace;outline:none;">';
+      html += '<button data-test-btn type="button" style="background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:5px 10px;color:rgba(255,255,255,.7);font-size:11px;cursor:pointer;white-space:nowrap;">' + t('Test') + '</button>';
       html += '</div>';
     }
     html += '</div>';
@@ -473,7 +473,7 @@ export function saveSettings(container: HTMLElement): void {
     .then(function(r) { return r.json(); })
     .then(function(data) {
       if (saveBtn) {
-        saveBtn.textContent = data.ok ? '\u2713 Saved' : 'Save Settings';
+        saveBtn.textContent = data.ok ? '\u2713 ' + t('Saved') : t('Save Settings');
         saveBtn.disabled = false;
       }
       if (data.ok) {

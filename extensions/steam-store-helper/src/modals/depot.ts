@@ -7,6 +7,7 @@ import { closeModal } from './source';
 import { applyInstallingState, applyInLibraryState } from '../ui/button';
 import { retryFetch } from '../api/bridge';
 import { openSidebar } from '../sidebar/SidebarPanel';
+import { t } from '../i18n';
 
 var _steamLibraryFolders: Array<{ path: string; commonPath: string; label: string }> | null = null;
 
@@ -60,11 +61,11 @@ export function openDepotModal(appId: string): void {
     var hdrTitle = document.createElement('div');
     hdrTitle.id = titleId;
     hdrTitle.setAttribute('style', ST.headerTitle);
-    hdrTitle.textContent = 'Download Content';
+    hdrTitle.textContent = t('Download Content');
     var hdrSubtitle = document.createElement('div');
     hdrSubtitle.id = descId;
     hdrSubtitle.setAttribute('style', ST.headerSubtitle);
-    hdrSubtitle.textContent = 'Select depots to download game content';
+    hdrSubtitle.textContent = t('Select depots to download game content');
     hdrTextWrap.appendChild(hdrTitle);
     hdrTextWrap.appendChild(hdrSubtitle);
 
@@ -77,7 +78,7 @@ export function openDepotModal(appId: string): void {
     closeBtn.type = 'button';
     closeBtn.setAttribute('class', 'luma-ssh-close-btn');
     closeBtn.setAttribute('style', ST.closeBtn);
-    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.setAttribute('aria-label', t('Close'));
     closeBtn.innerHTML = svgX();
     closeBtn.addEventListener('click', function () {
       if (state.depotModalState && state.depotModalState.downloading) return;
@@ -102,7 +103,7 @@ export function openDepotModal(appId: string): void {
     body.innerHTML =
       '<div style="' + ST.loading + '">' +
       svgSpinner() +
-      '<span style="' + ST.loadingText + '">Resolving depots\u2026</span>' +
+      '<span style="' + ST.loadingText + '">' + t('Resolving depots…') + '</span>' +
       '</div>';
 
     // Footer
@@ -110,11 +111,11 @@ export function openDepotModal(appId: string): void {
     footer.setAttribute('style', ST.footer);
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
-    footerNote.textContent = 'Content is downloaded through DepotDownloaderMod';
+    footerNote.textContent = t('Content is downloaded through DepotDownloaderMod');
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.setAttribute('style', ST.cancelBtn);
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = t('Cancel');
     cancelBtn.addEventListener('click', function () {
       state.depotModalState = null;
       closeModal();
@@ -176,8 +177,8 @@ export function fetchDepotsForModal(appId: string): void {
       (body as HTMLElement).innerHTML =
         '<div style="' + ST.errorWrap + '">' +
         '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
-        '<div style="' + ST.errorTitle + '">' + (isNotInstalled ? 'DepotDownloaderMod Not Installed' : isNoKeys ? 'No Depot Keys Found' : 'Failed to Resolve Depots') + '</div>' +
-        '<div style="' + ST.errorMsgNew + '">' + (err.message || 'Unknown error') + '</div>' +
+        '<div style="' + ST.errorTitle + '">' + (isNotInstalled ? t('DepotDownloaderMod Not Installed') : isNoKeys ? t('No Depot Keys Found') : t('Failed to Resolve Depots')) + '</div>' +
+        '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
         '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
         '</div>' +
@@ -231,7 +232,7 @@ export function renderDepotList(appId: string): void {
     var s = '<div class="luma-depot-group">';
     s += '<div style="' + ST.depotGroupHeader + '">';
     s += '<span>' + title + ' (' + groupSelected + '/' + groupDepots.length + ')' + '</span>';
-    s += '<button type="button" class="luma-depot-group-toggle" data-group="' + groupKey + '">Select All</button>';
+    s += '<button type="button" class="luma-depot-group-toggle" data-group="' + groupKey + '">' + t('Select All') + '</button>';
     s += '</div>';
 
     groupDepots.forEach(function (depot) {
@@ -269,13 +270,13 @@ export function renderDepotList(appId: string): void {
     return s;
   }
 
-  html += renderGroup('Base Game', baseDepots, 'base');
+  html += renderGroup(t('Base Game'), baseDepots, 'base');
   html += renderGroup('DLC', dlcDepots, 'dlc');
-  html += renderGroup('Shared', sharedDepots, 'shared');
+  html += renderGroup(t('Shared'), sharedDepots, 'shared');
 
   // Location dropdown
   html += '<div style="margin:12px 0;padding:12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);">';
-  html += '<div style="font-size:11px;font-weight:600;color:#8f98a0;margin-bottom:6px;">Download Location</div>';
+  html += '<div style="font-size:11px;font-weight:600;color:#8f98a0;margin-bottom:6px;">' + t('Download Location') + '</div>';
   html += '<select id="luma-depot-location" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:#1b2838;color:#fff;font-size:12px;cursor:pointer;">';
   if (_steamLibraryFolders && _steamLibraryFolders.length > 0) {
     for (var fi = 0; fi < _steamLibraryFolders.length; fi++) {
@@ -400,8 +401,8 @@ export function startDepotDownload(appId: string): void {
       body.innerHTML =
         '<div style="' + ST.errorWrap + '">' +
         '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
-        '<div style="' + ST.errorTitle + '">Download Failed to Start</div>' +
-        '<div style="' + ST.errorMsgNew + '">' + (err.message || 'Unknown error') + '</div>' +
+        '<div style="' + ST.errorTitle + '">' + t('Download Failed to Start') + '</div>' +
+        '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
         '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
         '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">CLOSE</button>' +

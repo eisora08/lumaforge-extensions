@@ -269,7 +269,7 @@ function loadFixesData(appId: string): void {
       body.innerHTML =
         '<div style="' + ST.errorWrap + '">' +
         '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
-        '<div style="' + ST.errorTitle + '">Failed to Load Fixes</div>' +
+        '<div style="' + ST.errorTitle + '">' + t('Failed to Load Fixes') + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
         '<button type="button" id="luma-fixes-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
@@ -331,8 +331,8 @@ function renderFixes(appId: string): void {
     html +=
       '<div style="' + ST.errorWrap + ';margin:8px 0;">' +
       '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
-      '<div style="' + ST.errorTitle + '">Game Not Installed</div>' +
-      '<div style="' + ST.errorMsgNew + '">Install the game to apply fixes.</div>' +
+      '<div style="' + ST.errorTitle + '">' + t('Game Not Installed') + '</div>' +
+      '<div style="' + ST.errorMsgNew + '">' + t('Install the game to apply fixes.') + '</div>' +
       '</div>';
     body.innerHTML = html;
     return;
@@ -366,7 +366,7 @@ function renderFixes(appId: string): void {
   }
 
   if (rowsShown === 0) {
-    html += '<div style="font-size:12px;color:#8f98a0;padding:12px 0;">No fixes available for this game.</div>';
+    html += '<div style="font-size:12px;color:#8f98a0;padding:12px 0;">' + t('No fixes available for this game.') + '</div>';
   }
 
   body.innerHTML = html;
@@ -441,17 +441,17 @@ function renderRow(
   // actions
   s += '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end;">';
   if (toolId && !installed && !isBusy) {
-    s += '<button type="button" class="luma-fix-install" data-tool-id="' + escapeHtml(toolId) + '" data-fix-row="' + escapeHtml(rowKey) + '" style="' + miniBtn('#ffb43c') + '">Install tool</button>';
+    s += '<button type="button" class="luma-fix-install" data-tool-id="' + escapeHtml(toolId) + '" data-fix-row="' + escapeHtml(rowKey) + '" style="' + miniBtn('#ffb43c') + '">' + t('Install tool') + '</button>';
   } else if (isBusy) {
     s += '<button type="button" disabled style="' + miniBtn('#8f98a0') + ';opacity:.5;cursor:default;">\u2026</button>';
   } else if (applied) {
     s += '<button type="button" class="luma-fix-unfix" data-fix-row="' + escapeHtml(rowKey) + '"' +
       (catalog ? ' data-fix-type="' + escapeHtml(catalog.fixType) + '"' : '') +
-      ' style="' + miniBtn('#ff6e6e') + '">Unfix</button>';
+      ' style="' + miniBtn('#ff6e6e') + '">' + t('Unfix') + '</button>';
   } else {
     s += '<button type="button" class="luma-fix-apply" data-fix-row="' + escapeHtml(rowKey) + '"' +
       (catalog ? ' data-download-url="' + escapeHtml(catalog.downloadUrl) + '" data-fix-type="' + escapeHtml(catalog.fixType) + '"' : '') +
-      ' style="' + miniBtn('#64c882') + '"' + (toolId && !installed ? ' disabled style="' + miniBtn('#8f98a0') + ';opacity:.5;"' : '') + '>Apply</button>';
+      ' style="' + miniBtn('#64c882') + '"' + (toolId && !installed ? ' disabled style="' + miniBtn('#8f98a0') + ';opacity:.5;"' : '') + '>' + t('Apply') + '</button>';
   }
   s += '</div>';
 

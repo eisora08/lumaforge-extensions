@@ -48,22 +48,22 @@ function showSteamRestartDialog(appId: string, gameName: string): void {
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);';
 
   var restartBtnHtml = IS_LINUX
-    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:var(--luma-ssh-accent,#66c0ff);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' RESTART STEAM</button>'
+    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:var(--luma-ssh-accent,#66c0ff);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' ' + t('RESTART STEAM') + '</button>'
     : '';
 
   overlay.innerHTML =
     '<div style="background:var(--luma-ssh-bg-panel,#1b2838);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:28px 24px 20px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);">' +
     '<div style="margin-bottom:12px;">' + svgCheck(32, 32) + '</div>' +
-    '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;">Content Downloaded</div>' +
+    '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;">' + t('Content Downloaded') + '</div>' +
     '<div style="font-size:12px;color:#8f98a0;margin-bottom:4px;">' + escapeHtml(gameName) + '</div>' +
-    '<div style="font-size:12px;color:#8f98a0;margin-bottom:16px;">Game content has been downloaded and registered in Steam.</div>' +
+    '<div style="font-size:12px;color:#8f98a0;margin-bottom:16px;">' + t('Game content has been downloaded and registered in Steam.') + '</div>' +
     (IS_LINUX
-      ? '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:var(--luma-ssh-a08,rgba(102,192,255,.08));border:1px solid var(--luma-ssh-a15,rgba(102,192,255,.15));font-size:12px;color:#c7d5e0;">Steam needs to be restarted to detect the new game.<br>Would you like to restart now?</div>'
+      ? '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:var(--luma-ssh-a08,rgba(102,192,255,.08));border:1px solid var(--luma-ssh-a15,rgba(102,192,255,.15));font-size:12px;color:#c7d5e0;">' + t('Steam needs to be restarted to detect the new game.') + '<br>' + t('Would you like to restart now?') + '</div>'
       : '') +
     '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
     restartBtnHtml +
-    '<button type="button" id="luma-sr-library" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#c7d5e0;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgLibrary() + ' VIEW IN LIBRARY</button>' +
-    '<button type="button" id="luma-sr-close" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8f98a0;font-size:13px;cursor:pointer;">' + (IS_LINUX ? 'RESTART LATER' : 'CLOSE') + '</button>' +
+    '<button type="button" id="luma-sr-library" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#c7d5e0;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgLibrary() + ' ' + t('VIEW IN LIBRARY') + '</button>' +
+    '<button type="button" id="luma-sr-close" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8f98a0;font-size:13px;cursor:pointer;">' + (IS_LINUX ? t('RESTART LATER') : t('CLOSE')) + '</button>' +
     '</div>' +
     '</div>';
 
@@ -77,7 +77,7 @@ function showSteamRestartDialog(appId: string, gameName: string): void {
   if (restartBtn) {
     restartBtn.addEventListener('click', function () {
       restartBtn.disabled = true;
-      restartBtn.innerHTML = svgSpinner() + ' RESTARTING...';
+      restartBtn.innerHTML = svgSpinner() + ' ' + t('Restarting…');
       restartSteam(appId);
     });
   }
@@ -141,7 +141,7 @@ function renderTabContent(tabId: string) {
   if (!panel) return;
   var content = panel.querySelector('.luma-sidebar-content');
   if (!content) return;
-  (content as HTMLElement).innerHTML = '<div style="text-align:center;padding:40px;color:#8f98a0;">Loading...</div>';
+    (content as HTMLElement).innerHTML = '<div style="text-align:center;padding:40px;color:#8f98a0;">' + t('Loading…') + '</div>';
   if (tabId !== 'tools') stopToolsPoll();
   if (tabId !== 'fixes') stopFixesPoll();
   if (tabId !== 'dashboard') stopDashPoll();
@@ -237,33 +237,33 @@ function renderDashboardTab(container: HTMLElement) {
   var html = '';
   html += '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:20px;">';
-  html += '<div class="luma-stat-card"><div class="luma-stat-icon blue">' + svgGear() + '</div><div><div class="luma-stat-value" id="luma-dash-providers">--</div><div class="luma-stat-label">Active Providers</div></div></div>';
-  html += '<div class="luma-stat-card"><div class="luma-stat-icon green">' + svgDownload() + '</div><div><div class="luma-stat-value" id="luma-dash-downloads">' + (state.activeDownloads.length + state.activeDepotJobs.length) + '</div><div class="luma-stat-label">Active Downloads</div></div></div>';
+  html += '<div class="luma-stat-card"><div class="luma-stat-icon blue">' + svgGear() + '</div><div><div class="luma-stat-value" id="luma-dash-providers">--</div><div class="luma-stat-label">' + t('Active Providers') + '</div></div></div>';
+  html += '<div class="luma-stat-card"><div class="luma-stat-icon green">' + svgDownload() + '</div><div><div class="luma-stat-value" id="luma-dash-downloads">' + (state.activeDownloads.length + state.activeDepotJobs.length) + '</div><div class="luma-stat-label">' + t('Active Downloads') + '</div></div></div>';
   html += '</div>';
 
   // Active downloads list (repainted live by the dashboard poll)
-  html += '<div class="luma-sidebar-section" id="luma-dash-active-section" style="' + ((state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0) ? '' : 'display:none;') + '"><div class="luma-sidebar-section-title">Active Now</div><div id="luma-dash-active"></div></div>';
+  html += '<div class="luma-sidebar-section" id="luma-dash-active-section" style="' + ((state.activeDownloads.length > 0 || state.activeDepotJobs.length > 0) ? '' : 'display:none;') + '"><div class="luma-sidebar-section-title">' + t('Active Now') + '</div><div id="luma-dash-active"></div></div>';
 
   // Lua Scripts section — flex:1 reaches the sidebar footer, scrolls internally
-  html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" id="luma-dash-lua-title" style="flex-shrink:0;">Lua Scripts</div>';
+  html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" id="luma-dash-lua-title" style="flex-shrink:0;">' + t('Lua Scripts') + '</div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-shrink:0;">';
-  html += '<input id="luma-lua-search" type="text" placeholder="Search\u2026" value="' + esc(_luaQuery) + '" style="flex:1 1 auto;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;" />';
+  html += '<input id="luma-lua-search" type="text" placeholder="' + t('Search…') + '" value="' + esc(_luaQuery) + '" style="flex:1 1 auto;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;" />';
   html += '<select id="luma-lua-sort" style="flex:0 0 106px;width:106px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 6px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;">';
-  html += '<optgroup label="Show">';
-  html += '<option value="all"' + (_luaSelectVal === 'all' ? ' selected' : '') + '>All</option>';
-  html += '<option value="installed"' + (_luaSelectVal === 'installed' ? ' selected' : '') + '>Installed</option>';
-  html += '<option value="not-installed"' + (_luaSelectVal === 'not-installed' ? ' selected' : '') + '>Not installed</option>';
+  html += '<optgroup label="' + t('Show') + '">';
+  html += '<option value="all"' + (_luaSelectVal === 'all' ? ' selected' : '') + '>' + t('All') + '</option>';
+  html += '<option value="installed"' + (_luaSelectVal === 'installed' ? ' selected' : '') + '>' + t('Installed') + '</option>';
+  html += '<option value="not-installed"' + (_luaSelectVal === 'not-installed' ? ' selected' : '') + '>' + t('Not installed') + '</option>';
   html += '</optgroup>';
-  html += '<optgroup label="Sort">';
-  html += '<option value="name-asc"' + (_luaSelectVal === 'name-asc' ? ' selected' : '') + '>Name A-Z</option>';
-  html += '<option value="name-desc"' + (_luaSelectVal === 'name-desc' ? ' selected' : '') + '>Name Z-A</option>';
-  html += '<option value="newest"' + (_luaSelectVal === 'newest' ? ' selected' : '') + '>Newest</option>';
-  html += '<option value="oldest"' + (_luaSelectVal === 'oldest' ? ' selected' : '') + '>Oldest</option>';
+  html += '<optgroup label="' + t('Sort') + '">';
+  html += '<option value="name-asc"' + (_luaSelectVal === 'name-asc' ? ' selected' : '') + '>' + t('Name A-Z') + '</option>';
+  html += '<option value="name-desc"' + (_luaSelectVal === 'name-desc' ? ' selected' : '') + '>' + t('Name Z-A') + '</option>';
+  html += '<option value="newest"' + (_luaSelectVal === 'newest' ? ' selected' : '') + '>' + t('Newest') + '</option>';
+  html += '<option value="oldest"' + (_luaSelectVal === 'oldest' ? ' selected' : '') + '>' + t('Oldest') + '</option>';
   html += '</optgroup>';
   html += '</select>';
   html += '</div>';
   html += '<div id="luma-dash-lua-container" style="flex:1;min-height:0;overflow-y:auto;padding-right:4px;">';
-  html += '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">Loading...</div>';
+  html += '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">' + t('Loading…') + '</div>';
   html += '</div></div>';
   html += '</div>';
 
@@ -489,7 +489,7 @@ function paintLuaCards(): void {
   if (!luaContainer) return;
 
   var titleEl = document.getElementById('luma-dash-lua-title');
-  if (titleEl) titleEl.textContent = 'Lua Scripts (' + _luaFiles.length + ')';
+  if (titleEl) titleEl.textContent = t('Lua Scripts') + ' (' + _luaFiles.length + ')';
 
   var pins = _luaPins;
   var q = _luaQuery.trim().toLowerCase();
@@ -537,8 +537,8 @@ function paintLuaCards(): void {
         var installed = !!(pin && pin.installed) || !!(catRow && catRow.installed);
         var hasPins = !!(pin && pin.hasPins);
         var badges = '';
-        if (installed) badges += ' \u00b7 <span style="color:#64c882;">Installed</span>';
-        if (hasPins) badges += ' \u00b7 <span style="color:#f0ad4e;">Pinned</span>';
+    if (installed) badges += ' \u00b7 <span style="color:#64c882;">' + t('Installed') + '</span>';
+    if (hasPins) badges += ' \u00b7 <span style="color:#f0ad4e;">' + t('Pinned') + '</span>';
         if (catRow && catRow.cloudsave && catRow.cloudsave !== false) badges += ' \u00b7 <span style="color:#5bc0de;">Cloud</span>';
 
         h += '<div class="luma-stat-card" data-lua-appid="' + esc(f.appId) + '" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
@@ -549,17 +549,17 @@ function paintLuaCards(): void {
         h += '</div>';
         h += '<div style="position:relative;flex-shrink:0;">';
         if (hasPins) {
-          h += '<button class="luma-lua-pin-btn" data-lua-pin-direct="' + esc(f.appId) + '" title="Unpin manifest" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(240,173,78,.15);border:1px solid rgba(240,173,78,.5);color:#f0ad4e;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">' + svgPin(12, 12) + '</button>';
+          h += '<button class="luma-lua-pin-btn" data-lua-pin-direct="' + esc(f.appId) + '" title="' + t('Unpin manifest') + '" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(240,173,78,.15);border:1px solid rgba(240,173,78,.5);color:#f0ad4e;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">' + svgPin(12, 12) + '</button>';
         } else {
-          h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="Manifest pins" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">' + svgPin(12, 12) + '</button>';
+          h += '<button class="luma-lua-pin-btn" data-lua-pin-toggle="' + esc(f.appId) + '" title="' + t('Manifest pins') + '" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;line-height:1;">' + svgPin(12, 12) + '</button>';
         }
         h += '<div class="luma-lua-pin-menu" data-lua-pin-menu="' + esc(f.appId) + '" style="display:none;position:absolute;right:0;top:calc(100% + 4px);z-index:60;background:var(--luma-ssh-bg-panel,#1b2838);border:1px solid rgba(255,255,255,.15);border-radius:6px;padding:4px;min-width:190px;box-shadow:0 6px 20px rgba(0,0,0,.5);text-align:left;">';
-        h += '<button data-lua-pin-action="current" data-app="' + esc(f.appId) + '" style="display:' + (installed ? 'flex' : 'none') + ';align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + 'Pin to Current Version</button>';
-        h += '<button data-lua-pin-action="latest" data-app="' + esc(f.appId) + '" style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + 'Pin to Latest Version</button>';
-        h += '<button data-lua-pin-action="unpin" data-app="' + esc(f.appId) + '" style="display:' + (hasPins ? 'flex' : 'none') + ';align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#e74c3c;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + 'Unpin</button>';
+        h += '<button data-lua-pin-action="current" data-app="' + esc(f.appId) + '" style="display:' + (installed ? 'flex' : 'none') + ';align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + t('Pin to Current Version') + '</button>';
+        h += '<button data-lua-pin-action="latest" data-app="' + esc(f.appId) + '" style="display:flex;align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#c7d5e0;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + t('Pin to Latest Version') + '</button>';
+        h += '<button data-lua-pin-action="unpin" data-app="' + esc(f.appId) + '" style="display:' + (hasPins ? 'flex' : 'none') + ';align-items:center;gap:6px;width:100%;text-align:left;background:none;border:none;color:#e74c3c;font-size:11px;padding:6px 8px;cursor:pointer;border-radius:4px;white-space:nowrap;">' + svgPin(10, 10) + t('Unpin') + '</button>';
         h += '</div>';
         h += '</div>';
-        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="Remove Lua script" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 7px;color:#e74c3c;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;">' + svgTrash(12, 12) + '</button>';
+        h += '<button class="luma-lua-delete-btn" data-lua-delete="' + esc(f.appId) + '" title="' + t('Remove Lua script') + '" style="display:inline-flex;align-items:center;justify-content:center;background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.25);border-radius:4px;padding:4px 7px;color:#e74c3c;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1;">' + svgTrash(12, 12) + '</button>';
         h += '</div>';
       }
       luaContainer.innerHTML = h;
@@ -721,7 +721,7 @@ function paintLuaCards(): void {
 // Providers tab — full provider settings (independent of luma-lite)
 // ---------------------------------------------------------------------------
 function renderProvidersTab(container: HTMLElement) {
-  var html = '<div style="text-align:center;padding:40px;color:#8f98a0;">Loading providers...</div>';
+  var html = '<div style="text-align:center;padding:40px;color:#8f98a0;">' + t('Loading providers…') + '</div>';
   container.innerHTML = html;
 
   fetch(bridgeUrl('/api/settings'), { method: 'GET', mode: 'cors', cache: 'no-store' })
@@ -746,14 +746,14 @@ function renderProvidersTab(container: HTMLElement) {
         h += '<button class="luma-toggle' + (p.enabled ? ' on' : '') + '" data-toggle="' + i + '"></button>';
         h += '<div style="min-width:0;">';
         h += '<div style="font-size:13px;font-weight:600;color:#fff;">' + esc(p.name) + '</div>';
-        h += '<div style="font-size:10px;color:#8f98a0;">' + (p.id === 'steamkeys' ? 'Local provider (no API key)' : (p.hasKey ? 'API key configured' : 'No API key')) + '</div>';
+        h += '<div style="font-size:10px;color:#8f98a0;">' + (p.id === 'steamkeys' ? t('Local provider (no API key)') : (p.hasKey ? t('API key configured') : t('No API key'))) + '</div>';
         h += '</div></div>';
         h += '<span class="luma-provider-test-status" data-test-status="' + i + '" style="font-size:10px;color:#8f98a0;"></span>';
         h += '</div>';
 
         // Row 2: URL (local providers have no endpoint to configure)
         if (p.id === 'steamkeys') {
-          h += '<div style="font-size:10px;color:#64c882;">Local provider \u2014 no URL and no API key required</div>';
+          h += '<div style="font-size:10px;color:#64c882;">' + t('Local provider — no URL and no API key required') + '</div>';
         } else {
           h += '<div style="display:flex;align-items:center;gap:6px;">';
           h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">URL</label>';
@@ -768,7 +768,7 @@ function renderProvidersTab(container: HTMLElement) {
           var maskedVal = p.hasKey ? (p.maskedKey || '') : '';
           h += '<div style="display:flex;align-items:center;gap:6px;">';
           h += '<label style="font-size:10px;color:#8f98a0;width:32px;flex-shrink:0;">Key</label>';
-          h += '<input type="password" data-provider-key="' + i + '" data-masked-key="' + esc(p.maskedKey || '') + '" value="' + esc(maskedVal) + '" placeholder="' + (p.hasKey ? p.maskedKey : 'Enter API key') + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
+          h += '<input type="password" data-provider-key="' + i + '" data-masked-key="' + esc(p.maskedKey || '') + '" value="' + esc(maskedVal) + '" placeholder="' + (p.hasKey ? p.maskedKey : t('Enter API key')) + '" style="flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:4px;padding:5px 8px;color:#fff;font-size:11px;font-family:monospace;outline:none;">';
           h += '<button class="luma-sidebar-btn secondary" data-test-btn="' + i + '" style="padding:4px 8px;font-size:10px;">Test</button>';
           h += '</div>';
 
@@ -882,7 +882,7 @@ function testProvider(container: HTMLElement, idx: number) {
   var statusEl = row.querySelector('[data-test-status="' + idx + '"]') as HTMLElement;
   var providerId = row.getAttribute('data-provider-id');
 
-  if (statusEl) statusEl.textContent = 'Testing...';
+    if (statusEl) statusEl.textContent = t('Testing…');
   statusEl.style.color = 'var(--luma-ssh-accent,#66c0ff)';
 
   retryFetch(bridgeUrl('/api/settings/test-key'), {
@@ -935,7 +935,7 @@ function saveProviders(container: HTMLElement) {
   });
 
   var saveBtn = document.getElementById('luma-providers-save') as HTMLButtonElement;
-  if (saveBtn) { saveBtn.textContent = 'Saving...'; saveBtn.disabled = true; }
+    if (saveBtn) { saveBtn.textContent = t('Saving…'); saveBtn.disabled = true; }
 
   retryFetch(bridgeUrl('/api/settings'), {
     method: 'POST',
@@ -1443,7 +1443,7 @@ function renderToolsTab(container: HTMLElement) {
   var restartBtn = document.getElementById('luma-tools-restart-steam');
   if (restartBtn) {
     restartBtn.addEventListener('click', function() {
-      restartBtn.textContent = 'Restarting...';
+      restartBtn.textContent = t('Restarting…');
       restartBtn.setAttribute('disabled', 'true');
       fetch(restartSteamUrl(), { method: 'POST', mode: 'cors', cache: 'no-store' })
         .then(function(r) { return r.json(); })
@@ -1820,7 +1820,7 @@ function wireSteamKeysSection(container: HTMLElement) {
 
   unpinAllBtn.addEventListener('click', function() {
     unpinAllBtn.disabled = true;
-    unpinAllBtn.textContent = 'Unpinning\u2026';
+    unpinAllBtn.textContent = t('Unpinning…');
     statusEl.textContent = '';
     fetch(steamKeysUnpinUrl(), {
       method: 'POST',
@@ -1889,7 +1889,7 @@ function wireSteamAccountSection(container: HTMLElement) {
 
   if (getkeyBtn) {
     getkeyBtn.addEventListener('click', function() {
-      statusEl.textContent = 'Opening\u2026';
+      statusEl.textContent = t('Opening…');
       statusEl.style.color = 'var(--luma-ssh-accent,#66c0ff)';
       retryFetch(openUrlApi(), {
         method: 'POST',
@@ -1974,14 +1974,14 @@ function wireSteamAccountSection(container: HTMLElement) {
       .then(function(r) { return r.json(); })
       .then(function(data) {
         saveBtn.disabled = false;
-        saveBtn.textContent = data.ok ? '\u2713 Saved' : 'Save';
-        statusEl.textContent = data.ok ? '' : (data.message || 'Error');
+        saveBtn.textContent = data.ok ? '\u2713 ' + t('Saved') : t('Save');
+        statusEl.textContent = data.ok ? '' : (data.message || t('Error'));
         statusEl.style.color = data.ok ? '#64c882' : '#ff6e6e';
-        if (data.ok) setTimeout(function() { saveBtn.textContent = 'Save'; }, 2000);
+        if (data.ok) setTimeout(function() { saveBtn.textContent = t('Save'); }, 2000);
       })
       .catch(function() {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Save';
+        saveBtn.textContent = t('Save');
         statusEl.textContent = t('Save failed');
         statusEl.style.color = '#ff6e6e';
       });
@@ -2125,7 +2125,7 @@ function applyCloudSaveStatus(s: any): void {
       if (auth.state === 'running') {
         loginBtn.setAttribute('disabled', 'true');
         loginBtn.style.opacity = '0.5';
-        loginBtn.textContent = 'Waiting for browser\u2026';
+        loginBtn.textContent = t('Waiting for browser…');
       } else {
         loginBtn.removeAttribute('disabled');
         loginBtn.style.opacity = '';
@@ -2223,7 +2223,7 @@ function renderCloudsaveTab(container: HTMLElement) {
 
   var html = '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">';
   html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;">';
-  html += '<div class="luma-sidebar-section-title" style="flex-shrink:0;">Cloud Saves</div>';
+  html += '<div class="luma-sidebar-section-title" style="flex-shrink:0;">' + t('Cloud Saves') + '</div>';
 
   // Not installed
   html += '<div id="luma-cs-notinstalled" style="display:none;">';
@@ -2328,7 +2328,7 @@ function renderCloudsaveTab(container: HTMLElement) {
       installBtn.setAttribute('disabled', 'true');
       installBtn.style.opacity = '0.5';
       var st = document.getElementById('luma-cs-install-status');
-      if (st) st.textContent = 'Installing\u2026';
+      if (st) st.textContent = t('Installing…');
       fetch(toolInstallUrl('cloud_redirect'), { method: 'POST', mode: 'cors', cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .catch(function() { });
@@ -2507,12 +2507,12 @@ function renderCloudsaveTab(container: HTMLElement) {
         btn.setAttribute('disabled', 'true');
         btn.style.opacity = '0.5';
         btn.removeAttribute('data-confirm');
-        btn.textContent = 'Deleting\u2026';
+        btn.textContent = t('Deleting…');
         fetch(cloudSaveAppDeleteUrl(appId), { method: 'DELETE', mode: 'cors', cache: 'no-store' })
           .then(function(r) { return r.json(); })
           .then(function(d) {
             var ok = !!(d && (d.localDeleted || d.cloudDeleted));
-            var msg = (d && d.message) || (ok ? 'Deleted' : t('Delete failed'));
+            var msg = (d && d.message) || (ok ? t('Deleted') : t('Delete failed'));
             cloudSaveShowMsg(msg, ok);
             loadCloudSaveStatus();
             loadCloudSaveApps();
@@ -2640,7 +2640,7 @@ export function openSidebar(initialTab?: string) {
   var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;overflow-x:auto;scrollbar-width:none;">';
   for (var i = 0; i < TABS.length; i++) {
     var tab = TABS[i];
-    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 0 auto;white-space:nowrap;padding:10px 4px;text-align:center;font-size:10px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + t(tab.label) + '</button>';
+    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px 2px;text-align:center;font-size:10px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + t(tab.label) + '</button>';
   }
   tabsHtml += '</div>';
 

@@ -90,7 +90,7 @@ export function openSourceModal(appId: string): void {
     closeBtn.type = 'button';
     closeBtn.setAttribute('class', 'luma-ssh-close-btn');
     closeBtn.setAttribute('style', ST.closeBtn);
-    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.setAttribute('aria-label', t('Close'));
     closeBtn.innerHTML = svgX();
     closeBtn.addEventListener('click', closeModal);
 
@@ -127,18 +127,18 @@ export function openSourceModal(appId: string): void {
     body.innerHTML =
       '<div style="' + ST.loading + '">' +
       svgSpinner() +
-      '<span style="' + ST.loadingText + '">Loading providers\u2026</span>' +
+      '<span style="' + ST.loadingText + '">' + t('Loading providers…') + '</span>' +
       '</div>';
 
     var footer = document.createElement('div');
     footer.setAttribute('style', ST.footer);
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
-    footerNote.textContent = 'Packages are installed through LumaForge';
+    footerNote.textContent = t('Packages are installed through LumaForge');
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.setAttribute('style', ST.cancelBtn);
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = t('Cancel');
     cancelBtn.addEventListener('click', closeModal);
     footer.appendChild(footerNote);
     footer.appendChild(cancelBtn);
@@ -363,7 +363,7 @@ export function openSourceModal(appId: string): void {
           '<button id="luma-retry-sources" style="' +
           ST.retryBtn +
           '">' +
-          'Retry' +
+          t('Retry') +
           '</button>' +
           '</div>' +
           '</div>';
@@ -488,7 +488,7 @@ export function renderSources(
         // available, but the key is known to be dead — show it anyway.
         var keyStateBadge = document.createElement('div');
         keyStateBadge.className = 'luma-source-expiry expired';
-        keyStateBadge.textContent = 'API Key Expired';
+        keyStateBadge.textContent = t('API Key Expired');
         info.appendChild(keyStateBadge);
       } else if (pstat && !pstat.hasKey) {
         var noKeyLine = document.createElement('div');
@@ -500,7 +500,7 @@ export function renderSources(
       var badge = document.createElement('div');
       badge.setAttribute('data-lumaforge-source-badge', 'true');
       badge.setAttribute('style', keyBlocked ? ST.badgeError : ST.badgeUnavail);
-      badge.innerHTML = svgLock() + '<span>' + (keyBlocked ? (reason.indexOf('No API key') === 0 ? 'No API Key' : 'API Expired') : 'Unavailable') + '</span>';
+      badge.innerHTML = svgLock() + '<span>' + (keyBlocked ? (reason.indexOf('No API key') === 0 ? t('No API Key') : t('API Expired')) : t('Unavailable')) + '</span>';
 
       var tooltip = document.createElement('div');
       tooltip.className = 'luma-source-tooltip';
@@ -587,16 +587,16 @@ export function renderSources(
 
         if (packageSize) {
           detail.textContent =
-            'Package available \u2022 ' + packageSize;
+            t('Package available') + ' \u2022 ' + packageSize;
         } else {
-          detail.textContent = 'Package available';
+          detail.textContent = t('Package available');
         }
       } else if (checkOnDownload && selectable) {
         detail.textContent =
-          'Select Ryuu to download the package';
+          t('Select Ryuu to download the package');
       } else {
-        detail.textContent =
-          src.detail || 'Not available';
+    detail.textContent =
+    src.detail || t('Not available');
       }
       info.appendChild(name);
       info.appendChild(detail);
@@ -660,8 +660,8 @@ export function renderSources(
         if (expirationText) {
           usageParts.push(
             expirationText === 'Expired'
-              ? 'API key expired'
-              : 'Key: ' + expirationText
+              ? t('API key expired')
+              : t('Key') + ': ' + expirationText
           );
         }
 
@@ -699,7 +699,7 @@ export function renderSources(
         selectable = false;
         // When the backend flagged the problem it already sends the precise
         // reason (expired vs never configured) — only replace generic texts.
-        if (!src.keyError) detail.textContent = 'API key expired or invalid \u2014 update it in Providers';
+        if (!src.keyError) detail.textContent = t('API key expired or invalid — update it in Providers');
         card.setAttribute('style', 'opacity:.45;cursor:default;');
       }
 
@@ -779,7 +779,7 @@ export function renderSources(
       var tooltip = document.createElement('div');
       tooltip.className = 'luma-source-tooltip';
       var tooltipParts: string[] = [];
-      tooltipParts.push((src.name || src.id || 'Provider') + ': ' + (src.detail || (avail ? 'Package available' : 'Not available')));
+      tooltipParts.push((src.name || src.id || t('Provider')) + ': ' + (src.detail || (avail ? t('Package available') : t('Not available'))));
       if (avail) {
         var pstat2 = findProviderStat(src.id);
         if (pstat2 && pstat2.hasKey) {
@@ -1148,8 +1148,8 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
     body.innerHTML =
       '<div style="' + ST.successWrap + '">' +
       '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
-      '<div style="' + ST.successTitle + '">Package Added Successfully</div>' +
-      '<div style="' + ST.successDetail + '">The package has been downloaded and installed to your Steam library.</div>' +
+      '<div style="' + ST.successTitle + '">' + t('Package Added Successfully') + '</div>' +
+      '<div style="' + ST.successDetail + '">' + t('The package has been downloaded and installed to your Steam library.') + '</div>' +
       '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
       depotBtn +
       '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
@@ -1203,7 +1203,7 @@ export function showDownloadError(appId: string, message: string, errorCode?: st
     body.innerHTML =
       '<div style="' + ST.errorWrap + '">' +
       '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
-      '<div style="' + ST.errorTitle + '">Download Failed</div>' +
+      '<div style="' + ST.errorTitle + '">' + t('Download Failed') + '</div>' +
       '<div style="' + ST.errorMsgNew + '">' + detail + '</div>' +
       '<div style="' + ST.errorActions + '" class="luma-ssh-error-actions">' +
       '<button type="button" id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>TRY AGAIN</span></button>' +
