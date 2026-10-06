@@ -208,11 +208,31 @@ function firstColorVarBoth(names: string[]): RGB | null {
   return c;
 }
 
+// Strip every inline --luma-ssh-* custom property we previously set on
+// documentElement BEFORE re-resolving. Inline props beat all stylesheets, so
+// without this a deactivated theme leaves its accent/surface baked in forever:
+// the next resolve would also read them back (ACCENT_CANDIDATES contains
+// --luma-ssh-accent, our own stale value) and never converge. After the clear,
+// candidates resolve from the live stylesheets again — the proxy's ssh-bridge
+// var() chain (theme vars when on, Steam defaults when off) and the theme's
+// own :root palette.
+function clearInlineThemeVars(root: HTMLElement): void {
+  try {
+    var stale: string[] = [];
+    for (var i = 0; i < root.style.length; i++) {
+      var name = root.style.item(i);
+      if (name.indexOf('--luma-ssh-') === 0) stale.push(name);
+    }
+    for (var j = 0; j < stale.length; j++) root.style.removeProperty(stale[j]);
+  } catch (e) { }
+}
+
 // Resolve the active theme's colors and apply them as inline :root custom
 // properties. Safe to call repeatedly (theme-reload event, activation).
 export function resolveThemeColors(): void {
   try {
     var root = document.documentElement;
+    clearInlineThemeVars(root);
 
     var accent = firstColorVarBoth(ACCENT_CANDIDATES) || FALLBACK_ACCENT;
     var set = function (name: string, value: string) {
