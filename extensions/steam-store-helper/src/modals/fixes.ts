@@ -1,6 +1,8 @@
 import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION } from '../core/state';
 import { svgBox, svgX, svgSpinner, svgErrorCircle, svgCheck, svgGear, svgLock, svgCloudDownload, svgCheckSmall, svgRefresh } from '../ui/svg';
 import { ST, ensureKeyframes } from '../ui/styles';
+import { resolveThemeColors } from '../ui/themeColor';
+import { t } from '../i18n';
 import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody } from '../ui/helpers';
 import { escapeHtml } from '../ui/dom';
 import { closeModal } from './source';
@@ -84,6 +86,7 @@ export function openFixesModal(appId: string): void {
   try {
     closeModal();
     ensureKeyframes();
+    resolveThemeColors();
 
     state.savedFocusElement = document.activeElement;
     state.fixesModalState = {
@@ -127,7 +130,7 @@ export function openFixesModal(appId: string): void {
     var hdrTitle = document.createElement('div');
     hdrTitle.id = titleId;
     hdrTitle.setAttribute('style', ST.headerTitle);
-    hdrTitle.textContent = 'Game Fixes';
+    hdrTitle.textContent = t('Game Fixes');
     var hdrSubtitle = document.createElement('div');
     hdrSubtitle.id = descId;
     hdrSubtitle.setAttribute('style', ST.headerSubtitle);
@@ -144,7 +147,7 @@ export function openFixesModal(appId: string): void {
     closeBtn.type = 'button';
     closeBtn.setAttribute('class', 'luma-ssh-close-btn');
     closeBtn.setAttribute('style', ST.closeBtn);
-    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.setAttribute('aria-label', t('Close'));
     closeBtn.innerHTML = svgX();
     closeBtn.addEventListener('click', function () { closeFixesModal(); });
 
@@ -165,7 +168,7 @@ export function openFixesModal(appId: string): void {
     body.innerHTML =
       '<div style="' + ST.loading + '">' +
       svgSpinner() +
-      '<span style="' + ST.loadingText + '">Detecting game fixes\u2026</span>' +
+      '<span style="' + ST.loadingText + '">' + t('Detecting game fixes\u2026') + '</span>' +
       '</div>';
 
     // Footer
@@ -173,11 +176,11 @@ export function openFixesModal(appId: string): void {
     footer.setAttribute('style', ST.footer);
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
-    footerNote.textContent = 'Fixes back up original files (.bak) and write a fix log';
+    footerNote.textContent = t('Fixes back up original files (.bak) and write a fix log');
     var closeFooterBtn = document.createElement('button');
     closeFooterBtn.type = 'button';
     closeFooterBtn.setAttribute('style', ST.cancelBtn);
-    closeFooterBtn.textContent = 'Close';
+    closeFooterBtn.textContent = t('Close');
     closeFooterBtn.addEventListener('click', function () { closeFixesModal(); });
     footer.appendChild(footerNote);
     footer.appendChild(closeFooterBtn);
@@ -231,8 +234,8 @@ function loadFixesData(appId: string): void {
       var statusResp: any = res[1];
       var catalogResp: any = res[2];
 
-      if (!infoResp || !infoResp.ok) throw new Error((infoResp && infoResp.message) || 'Failed to load fix info');
-      if (!statusResp || !statusResp.ok) throw new Error((statusResp && statusResp.message) || 'Failed to load fix status');
+      if (!infoResp || !infoResp.ok) throw new Error((infoResp && infoResp.message) || t('Failed to load fix info'));
+      if (!statusResp || !statusResp.ok) throw new Error((statusResp && statusResp.message) || t('Failed to load fix status'));
 
       m.info = infoResp.info;
       m.status = statusResp;
@@ -267,7 +270,7 @@ function loadFixesData(appId: string): void {
         '<div style="' + ST.errorWrap + '">' +
         '<div style="' + ST.errorIcon + '">' + svgErrorCircle() + '</div>' +
         '<div style="' + ST.errorTitle + '">Failed to Load Fixes</div>' +
-        '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || 'Unknown error') + '</div>' +
+        '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
         '<button type="button" id="luma-fixes-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
         '</div>' +
@@ -282,7 +285,7 @@ function loadFixesData(appId: string): void {
             b.innerHTML =
               '<div style="' + ST.loading + '">' +
               svgSpinner() +
-              '<span style="' + ST.loadingText + '">Detecting game fixes\u2026</span>' +
+              '<span style="' + ST.loadingText + '">' + t('Detecting game fixes\u2026') + '</span>' +
               '</div>';
           }
           loadFixesData(m.appId);
@@ -313,7 +316,7 @@ function renderFixes(appId: string): void {
     if (info.hasSteamApi64) chips.push('steam_api64');
     if (info.hasSteamApi32) chips.push('steam_api32');
     if (info.hasSteamStubDrm) chips.push('SteamStub DRM');
-    if (info.hasOnlineFix) chips.push('Online-Fix available');
+    if (info.hasOnlineFix) chips.push(t('Online-Fix available'));
   }
   html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;align-items:center;">';
   html += '<span style="font-size:13px;font-weight:700;color:#fff;">' + escapeHtml(info.name || 'App ' + appId) + '</span>';
@@ -409,7 +412,7 @@ function renderRow(
     s += '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(46,160,67,.15);color:#64c882;">' + svgCheckSmall() + 'APPLIED</span>';
   }
   if (toolId && !installed) {
-    s += '<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(255,180,60,.12);color:#ffb43c;">TOOL NEEDED</span>';
+    s += '<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(255,180,60,.12);color:#ffb43c;">' + t('TOOL NEEDED') + '</span>';
   }
   s += '</div>';
   s += '<div style="font-size:11px;color:#8f98a0;margin-top:3px;line-height:1.4;">' + desc + '</div>';
@@ -530,7 +533,7 @@ function applyFix(appId: string, rowKey: string, downloadUrl: string | null, fix
       if (!m || m.appId !== appId) return;
       if (!d || !d.ok) {
         delete m.pending[rowKey];
-        m.results[rowKey] = { ok: false, message: (d && d.message) || 'Failed to start apply', at: Date.now() };
+        m.results[rowKey] = { ok: false, message: (d && d.message) || t('Failed to start apply'), at: Date.now() };
         renderFixes(appId);
         return;
       }
@@ -540,7 +543,7 @@ function applyFix(appId: string, rowKey: string, downloadUrl: string | null, fix
       var m = state.fixesModalState;
       if (!m || m.appId !== appId) return;
       delete m.pending[rowKey];
-      m.results[rowKey] = { ok: false, message: err.message || 'Network error', at: Date.now() };
+      m.results[rowKey] = { ok: false, message: err.message || t('Network error'), at: Date.now() };
       renderFixes(appId);
     });
 }
@@ -572,7 +575,7 @@ function unfixFix(appId: string, rowKey: string, fixType: string | null): void {
       if (d && d.ok && d.result) {
         m.results[rowKey] = { ok: !!d.result.ok, message: d.result.message || 'Done', at: Date.now() };
       } else {
-        m.results[rowKey] = { ok: false, message: (d && d.message) || 'Unfix failed', at: Date.now() };
+        m.results[rowKey] = { ok: false, message: (d && d.message) || t('Unfix failed'), at: Date.now() };
       }
       refreshStatus(appId).then(function () { renderFixes(appId); });
     })
@@ -580,7 +583,7 @@ function unfixFix(appId: string, rowKey: string, fixType: string | null): void {
       var m = state.fixesModalState;
       if (!m || m.appId !== appId) return;
       delete m.pending[rowKey];
-      m.results[rowKey] = { ok: false, message: err.message || 'Network error', at: Date.now() };
+      m.results[rowKey] = { ok: false, message: err.message || t('Network error'), at: Date.now() };
       renderFixes(appId);
     });
 }
@@ -599,7 +602,7 @@ function installFixTool(appId: string, toolId: string): void {
       if (!m || m.appId !== appId) return;
       if (!d || !d.ok) {
         m.toolInstallBusy = null;
-        m.results['__tool'] = { ok: false, message: (d && d.message) || 'Install failed', at: Date.now() };
+        m.results['__tool'] = { ok: false, message: (d && d.message) || t('Install failed'), at: Date.now() };
         renderFixes(appId);
         return;
       }
@@ -610,7 +613,7 @@ function installFixTool(appId: string, toolId: string): void {
       var m = state.fixesModalState;
       if (!m || m.appId !== appId) return;
       m.toolInstallBusy = null;
-      m.results['__tool'] = { ok: false, message: err.message || 'Network error', at: Date.now() };
+      m.results['__tool'] = { ok: false, message: err.message || t('Network error'), at: Date.now() };
       renderFixes(appId);
     });
 }
@@ -620,7 +623,7 @@ function pollToolInstall(appId: string, toolId: string, attempt: number): void {
   if (!ms || ms.appId !== appId || ms.toolInstallBusy !== toolId) return;
   if (attempt > 120) {
     ms.toolInstallBusy = null;
-    ms.results['__tool'] = { ok: false, message: 'Tool install timed out', at: Date.now() };
+    ms.results['__tool'] = { ok: false, message: t('Tool install timed out'), at: Date.now() };
     renderFixes(appId);
     return;
   }
@@ -645,7 +648,7 @@ function pollToolInstall(appId: string, toolId: string, attempt: number): void {
       var job = tool && tool.job;
       if (job && job.status === 'error') {
         m.toolInstallBusy = null;
-        m.results['__tool'] = { ok: false, message: job.message || 'Install failed', at: Date.now() };
+        m.results['__tool'] = { ok: false, message: job.message || t('Install failed'), at: Date.now() };
         renderFixes(appId);
         return;
       }
@@ -654,7 +657,7 @@ function pollToolInstall(appId: string, toolId: string, attempt: number): void {
       if (body) {
         var btn = body.querySelector('.luma-fix-install[data-tool-id="' + toolId + '"]');
         if (btn && job) {
-          btn.textContent = 'Installing ' + (job.progress || 0) + '%';
+          btn.textContent = t('Installing') + ' ' + (job.progress || 0) + '%';
         }
       }
       setTimeout(function () { pollToolInstall(appId, toolId, attempt + 1); }, TOOL_POLL_MS);

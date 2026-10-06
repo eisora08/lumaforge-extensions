@@ -2,6 +2,8 @@ import { state, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, saveSessionState 
 import { addHistoryEntry } from '../core/history_sync';
 import { svgX, svgGear, svgSpinner, svgCheck, svgErrorCircle, svgRefresh, svgDownload, svgBox, svgPlay, svgLibrary, svgPin, svgTrash } from '../ui/svg';
 import { ensureKeyframes } from '../ui/styles';
+import { resolveThemeColors } from '../ui/themeColor';
+import { t } from '../i18n';
 import { bridgeUrl, depotsUrl, restartSteamUrl, downloadsQueueUrl, downloadsQueueRemoveUrl, downloadsQueueClearHistoryUrl, downloadsQueueRemoveHistoryUrl, openLibraryUrl, luaFilesUrl, luaFileDeleteUrl, toolsUrl, toolInstallUrl, toolUpdateUrl, toolUninstallUrl, fixesAppliedUrl, fixesStatusUrl, fixesInfoUrl, fixesUnfixUrl, steamAccountUrl, steamAccountDetectUrl, openUrlApi, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl, cloudSaveStatusUrl, cloudSaveAppsUrl, cloudSaveLoginUrl, cloudSaveSaveProviderUrl, cloudSaveLogoutUrl, cloudSaveStatsSyncUrl, cloudSaveAppDeleteUrl } from '../ui/helpers';
 import { formatBytes, escapeHtml } from '../ui/dom';
 import { retryFetch } from '../api/bridge';
@@ -336,10 +338,17 @@ function stopDashPoll(): void {
 // Dashboard: Lua cards with Installed/Pinned badges + pin mini-menu
 // ---------------------------------------------------------------------------
 function loadLuaCards(): void {
+  console.log('[LUMA_INJECT] SIDEBAR loadLuaCards begin');
   fetch(steamKeysPinsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
     .then(function(r) { return r.ok ? r.json() : null; })
-    .then(function(pd) { renderLuaCards(pd && pd.ok && pd.pins ? pd.pins : {}); })
-    .catch(function() { renderLuaCards({}); });
+    .then(function(pd) {
+      console.log('[LUMA_INJECT] SIDEBAR loadLuaCards pins ok=' + !!(pd && pd.ok));
+      renderLuaCards(pd && pd.ok && pd.pins ? pd.pins : {});
+    })
+    .catch(function(e) {
+      console.warn('[LUMA_INJECT] SIDEBAR loadLuaCards pins error:', e && e.message);
+      renderLuaCards({});
+    });
 }
 
 function renderLuaCards(pins: any): void {
@@ -348,9 +357,11 @@ function renderLuaCards(pins: any): void {
     .then(function(data) {
       _luaPins = pins;
       _luaFiles = (data && data.ok && data.files) ? data.files : [];
+      console.log('[LUMA_INJECT] SIDEBAR renderLuaCards files=' + _luaFiles.length);
       paintLuaCards();
     })
-    .catch(function() {
+    .catch(function(e) {
+      console.warn('[LUMA_INJECT] SIDEBAR renderLuaCards files error:', e && e.message);
       _luaPins = pins;
       _luaFiles = [];
       paintLuaCards();
@@ -514,7 +525,7 @@ function paintLuaCards(): void {
   });
 
   if (files.length === 0) {
-    luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">' + (_luaFiles.length === 0 ? 'No Lua scripts installed' : 'No matches') + '</div>';
+    luaContainer.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">' + (_luaFiles.length === 0 ? t('No Lua scripts installed') : t('No matches')) + '</div>';
     return;
   }
 
@@ -577,6 +588,7 @@ function paintLuaCards(): void {
             var appId = btn.getAttribute('data-lua-pin-direct');
             if (!appId) return;
             (btn as HTMLButtonElement).disabled = true;
+            console.log('[LUMA_INJECT] SIDEBAR unpin-direct appId=' + appId + ' fetching');
 
             fetch(steamKeysUnpinUrl(), {
               method: 'POST',
@@ -586,20 +598,25 @@ function paintLuaCards(): void {
             })
               .then(function(r) { return r.json(); })
               .then(function(res) {
+                console.log('[LUMA_INJECT] SIDEBAR unpin-direct response ok=' + !!(res && res.ok) +
+                  ' msg=' + JSON.stringify((res && res.message) || null));
                 if (res && res.ok) loadLuaCards();
                 else {
                   (btn as HTMLButtonElement).disabled = false;
                   console.warn('[LUMA_INJECT] Unpin failed:', res && res.message);
                 }
               })
-              .catch(function() { (btn as HTMLButtonElement).disabled = false; });
+              .catch(function(e) {
+                console.warn('[LUMA_INJECT] SIDEBAR unpin-direct fetch error:', e && e.message);
+                (btn as HTMLButtonElement).disabled = false;
+              });
           });
         })(pinDirects[d]);
       }
 
       // Pin toggle buttons
       var pinToggles = luaContainer.querySelectorAll('[data-lua-pin-toggle]');
-      for (var t = 0; t < pinToggles.length; t++) {
+      for (var ti = 0; ti < pinToggles.length; ti++) {
         (function(btn: Element) {
           btn.addEventListener('click', function(ev) {
             ev.stopPropagation();
@@ -613,7 +630,7 @@ function paintLuaCards(): void {
             }
             menu.style.display = isOpen ? 'none' : 'block';
           });
-        })(pinToggles[t]);
+        })(pinToggles[ti]);
       }
 
       // Pin/unpin actions
@@ -633,6 +650,7 @@ function paintLuaCards(): void {
               ? { appId: appId }
               : { appId: appId, mode: action };
             (btn as HTMLButtonElement).disabled = true;
+            console.log('[LUMA_INJECT] SIDEBAR pin-action=' + action + ' appId=' + appId + ' fetching ' + url);
 
             fetch(url, {
               method: 'POST',
@@ -642,13 +660,18 @@ function paintLuaCards(): void {
             })
               .then(function(r) { return r.json(); })
               .then(function(res) {
+                console.log('[LUMA_INJECT] SIDEBAR pin-action=' + action + ' response ok=' + !!(res && res.ok) +
+                  ' msg=' + JSON.stringify((res && res.message) || null));
                 if (res && res.ok) loadLuaCards();
                 else {
                   (btn as HTMLButtonElement).disabled = false;
                   console.warn('[LUMA_INJECT] Pin op failed:', res && res.message);
                 }
               })
-              .catch(function() { (btn as HTMLButtonElement).disabled = false; });
+              .catch(function(e) {
+                console.warn('[LUMA_INJECT] SIDEBAR pin-action=' + action + ' fetch error:', e && e.message);
+                (btn as HTMLButtonElement).disabled = false;
+              });
           });
         })(pinActions[a]);
       }
@@ -663,10 +686,13 @@ function paintLuaCards(): void {
             var card = luaContainer.querySelector('[data-lua-appid="' + appId + '"]');
             (btn as HTMLButtonElement).textContent = '\u2026';
             (btn as HTMLButtonElement).disabled = true;
+            console.log('[LUMA_INJECT] SIDEBAR delete-lua appId=' + appId + ' fetching');
 
             fetch(luaFileDeleteUrl(appId), { method: 'DELETE', mode: 'cors', cache: 'no-store' })
               .then(function(r) { return r.json(); })
               .then(function(result) {
+                console.log('[LUMA_INJECT] SIDEBAR delete-lua response ok=' + !!(result && result.ok) +
+                  ' removedFile=' + JSON.stringify(result && result.removedFile));
                 if (result.ok && card) {
                   (card as HTMLElement).style.transition = 'opacity .3s, transform .3s';
                   (card as HTMLElement).style.opacity = '0';
@@ -681,7 +707,8 @@ function paintLuaCards(): void {
                   (btn as HTMLButtonElement).disabled = false;
                 }
               })
-              .catch(function() {
+              .catch(function(e) {
+                console.warn('[LUMA_INJECT] SIDEBAR delete-lua fetch error:', e && e.message);
                 (btn as HTMLButtonElement).innerHTML = svgTrash(12, 12);
                 (btn as HTMLButtonElement).disabled = false;
               });
@@ -708,7 +735,7 @@ function renderProvidersTab(container: HTMLElement) {
       var h = '';
 
       // Provider list
-      h += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Providers (' + providers.length + ')</div>';
+      h += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Providers') + ' (' + providers.length + ')</div>';
       for (var i = 0; i < providers.length; i++) {
         var p = providers[i];
         h += '<div class="luma-provider-row" data-provider-idx="' + i + '" data-provider-id="' + esc(p.id) + '" data-provider-name="' + esc(p.name || '') + '" style="flex-direction:column;align-items:stretch;gap:8px;">';
@@ -762,8 +789,8 @@ function renderProvidersTab(container: HTMLElement) {
 
       // Save button
       h += '<div style="padding:12px 0;display:flex;gap:8px;justify-content:flex-end;">';
-      h += '<button class="luma-sidebar-btn secondary" id="luma-providers-test-all">Test All</button>';
-      h += '<button class="luma-sidebar-btn primary" id="luma-providers-save">Save Settings</button>';
+      h += '<button class="luma-sidebar-btn secondary" id="luma-providers-test-all">' + t('Test All') + '</button>';
+      h += '<button class="luma-sidebar-btn primary" id="luma-providers-save">' + t('Save Settings') + '</button>';
       h += '</div>';
 
       container.innerHTML = h;
@@ -816,8 +843,8 @@ function renderProvidersTab(container: HTMLElement) {
     .catch(function() {
       container.innerHTML = '<div style="text-align:center;padding:40px;color:#e74c3c;">' +
         '<div style="margin-bottom:12px;">' + svgErrorCircle() + '</div>' +
-        '<div>Bridge not available</div>' +
-        '<div style="font-size:11px;color:#8f98a0;margin-top:8px;">Make sure the CDP proxy is running</div>' +
+        '<div>' + t('Bridge not available') + '</div>' +
+        '<div style="font-size:11px;color:#8f98a0;margin-top:8px;">' + t('Make sure the CDP proxy is running') + '</div>' +
         '</div>';
     });
 }
@@ -922,11 +949,11 @@ function saveProviders(container: HTMLElement) {
       if (saveBtn) {
         saveBtn.textContent = data.ok ? '\u2713 Saved' : 'Save Settings';
         saveBtn.disabled = false;
-        if (data.ok) setTimeout(function() { saveBtn.textContent = 'Save Settings'; }, 2000);
+        if (data.ok) setTimeout(function() { saveBtn.textContent = t('Save Settings'); }, 2000);
       }
     })
     .catch(function() {
-      if (saveBtn) { saveBtn.textContent = 'Save Settings'; saveBtn.disabled = false; }
+      if (saveBtn) { saveBtn.textContent = t('Save Settings'); saveBtn.disabled = false; }
     });
 }
 
@@ -938,7 +965,7 @@ function renderDownloadsTab(container: HTMLElement) {
   _downloadsPollSeq++;
   var seq = _downloadsPollSeq;
 
-  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Active Downloads</div>';
+  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Active Downloads') + '</div>';
   html += '<div id="luma-downloads-list"></div>';
   html += '</div>';
   html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="luma-history-toggle"><span>History</span><div style="display:flex;align-items:center;gap:6px;"><button id="luma-clear-history-btn" style="background:none;border:none;color:#8f98a0;font-size:10px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="Clear History">Clear</button><span style="font-size:10px;color:#8f98a0;">&#9660;</span></div></div>';
@@ -1098,8 +1125,8 @@ function renderDownloadsTab(container: HTMLElement) {
         if (queue.length === 0 && state.activeDownloads.length === 0) {
           cardsHtml = '<div style="text-align:center;padding:24px;color:#8f98a0;">' +
             '<div style="margin-bottom:8px;font-size:24px;opacity:.3;">' + svgDownload() + '</div>' +
-            '<div style="font-size:13px;">No active downloads</div>' +
-            '<div style="font-size:11px;margin-top:4px;opacity:.6;">Start a download from any game page</div>' +
+            '<div style="font-size:13px;">' + t('No active downloads') + '</div>' +
+            '<div style="font-size:11px;margin-top:4px;opacity:.6;">' + t('Start a download from any game page') + '</div>' +
             '</div>';
           listEl.innerHTML = cardsHtml;
           return;
@@ -1404,12 +1431,12 @@ function renderToolsTab(container: HTMLElement) {
   stopToolsPoll();
   var seq = ++_toolsPollSeq;
 
-  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Third-Party Tools</div>';
+  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Third-Party Tools') + '</div>';
   html += '<div id="luma-tools-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' Loading tools…</div></div>';
   html += '</div>';
-  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">Steam Integration</div>';
+  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">' + t('Steam Integration') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-  html += '<button class="luma-sidebar-btn secondary" id="luma-tools-restart-steam">Restart Steam</button>';
+  html += '<button class="luma-sidebar-btn secondary" id="luma-tools-restart-steam">' + t('Restart Steam') + '</button>';
   html += '</div></div>';
   container.innerHTML = html;
 
@@ -1422,16 +1449,16 @@ function renderToolsTab(container: HTMLElement) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data && data.ok) {
-            restartBtn.textContent = 'Restarted!';
-            setTimeout(function() { restartBtn.textContent = 'Restart Steam'; restartBtn.removeAttribute('disabled'); }, 2000);
+            restartBtn.textContent = t('Restarted!');
+            setTimeout(function() { restartBtn.textContent = t('Restart Steam'); restartBtn.removeAttribute('disabled'); }, 2000);
           } else {
-            restartBtn.textContent = 'Failed';
-            setTimeout(function() { restartBtn.textContent = 'Restart Steam'; restartBtn.removeAttribute('disabled'); }, 2000);
+            restartBtn.textContent = t('Failed');
+            setTimeout(function() { restartBtn.textContent = t('Restart Steam'); restartBtn.removeAttribute('disabled'); }, 2000);
           }
         })
         .catch(function() {
-          restartBtn.textContent = 'Error';
-          setTimeout(function() { restartBtn.textContent = 'Restart Steam'; restartBtn.removeAttribute('disabled'); }, 2000);
+          restartBtn.textContent = t('Error');
+          setTimeout(function() { restartBtn.textContent = t('Restart Steam'); restartBtn.removeAttribute('disabled'); }, 2000);
         });
     });
   }
@@ -1447,32 +1474,32 @@ function renderToolsTab(container: HTMLElement) {
     if (!listEl || !document.getElementById('luma-tools-list')) return;
 
     if (!tools || tools.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8f98a0;">No tools available</div>';
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8f98a0;">' + t('No tools available') + '</div>';
       return;
     }
 
     var rows = '';
     for (var i = 0; i < tools.length; i++) {
-      var t = tools[i];
-      if (!t.available) continue;
-      var job = t.job || null;
+      var tool = tools[i];
+      if (!tool.available) continue;
+      var job = tool.job || null;
       var busy = job && (job.status === 'running' || job.status === 'restarting');
       var jobError = job && job.status === 'error';
 
-      rows += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;" data-tool="' + esc(t.id) + '">';
+      rows += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;" data-tool="' + esc(tool.id) + '">';
 
       // Header: name + badges
       rows += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
       rows += '<div style="min-width:0;">';
-      rows += '<div style="font-size:13px;font-weight:600;color:#fff;">' + esc(t.name) + '</div>';
-      rows += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.description || '') + '</div>';
+      rows += '<div style="font-size:13px;font-weight:600;color:#fff;">' + esc(tool.name) + '</div>';
+      rows += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(tool.description || '') + '</div>';
       rows += '</div>';
       rows += '<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
-      if (t.installed) {
-        rows += badge(t.installedVersion ? 'Installed v' + t.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
+      if (tool.installed) {
+        rows += badge(tool.installedVersion ? 'Installed v' + tool.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
       }
-      if (t.updateAvailable && t.latestVersion) {
-        rows += badge('Update → ' + t.latestVersion, 'var(--luma-ssh-a15,rgba(102,192,255,.15))', 'var(--luma-ssh-accent,#66c0ff)');
+      if (tool.updateAvailable && tool.latestVersion) {
+        rows += badge('Update → ' + tool.latestVersion, 'var(--luma-ssh-a15,rgba(102,192,255,.15))', 'var(--luma-ssh-accent,#66c0ff)');
       }
       if (busy) {
         rows += badge(job.status === 'restarting' ? 'Restarting…' : (job.op + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
@@ -1494,15 +1521,15 @@ function renderToolsTab(container: HTMLElement) {
       }
 
       // Buttons
-      if (t.available) {
+      if (tool.available) {
         rows += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-        if (!t.installed) {
-          rows += '<button class="luma-sidebar-btn primary" data-tool-action="install" data-tool-id="' + esc(t.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Install</button>';
+        if (!tool.installed) {
+          rows += '<button class="luma-sidebar-btn primary" data-tool-action="install" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Install</button>';
         } else {
-          if (t.updateAvailable) {
-            rows += '<button class="luma-sidebar-btn primary" data-tool-action="update" data-tool-id="' + esc(t.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Update</button>';
+          if (tool.updateAvailable) {
+            rows += '<button class="luma-sidebar-btn primary" data-tool-action="update" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Update</button>';
           }
-          rows += '<button class="luma-sidebar-btn secondary" data-tool-action="uninstall" data-tool-id="' + esc(t.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Uninstall</button>';
+          rows += '<button class="luma-sidebar-btn secondary" data-tool-action="uninstall" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Uninstall</button>';
         }
         rows += '</div>';
       }
@@ -1546,8 +1573,8 @@ function renderToolsTab(container: HTMLElement) {
         if (listEl) {
           listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#e74c3c;">' +
             '<div style="margin-bottom:8px;">' + svgErrorCircle() + '</div>' +
-            '<div style="font-size:12px;">Bridge not available</div>' +
-            '<div style="font-size:10px;color:#8f98a0;margin-top:4px;">Make sure the CDP proxy is running</div>' +
+            '<div style="font-size:12px;">' + t('Bridge not available') + '</div>' +
+            '<div style="font-size:10px;color:#8f98a0;margin-top:4px;">' + t('Make sure the CDP proxy is running') + '</div>' +
             '</div>';
         }
       });
@@ -1588,10 +1615,10 @@ function renderFixesTab(container: HTMLElement) {
   stopFixesPoll();
   var seq = ++_fixesPollSeq;
 
-  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Applied Fixes</div>';
+  var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Applied Fixes') + '</div>';
   html += '<div id="luma-fixes-applied-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' Scanning fix logs…</div></div>';
   html += '</div>';
-  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">Notes</div>';
+  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">' + t('Notes') + '</div>';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.6;">';
   html += '<div>Fixes are tracked per game in <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">lumaforge-fix-log-&lt;appid&gt;.log</code>.</div>';
   html += '<div style="margin-top:4px;">Unfix removes the pasted files and restores any <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">.bak</code> backups.</div>';
@@ -1711,7 +1738,7 @@ function renderFixesTab(container: HTMLElement) {
         if (seq !== _fixesPollSeq || !listEl) return;
         listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#e74c3c;">' +
           '<div style="margin-bottom:8px;">' + svgErrorCircle() + '</div>' +
-          '<div style="font-size:12px;">Bridge not available</div>' +
+          '<div style="font-size:12px;">' + t('Bridge not available') + '</div>' +
           '</div>';
       });
   }
@@ -1734,7 +1761,7 @@ function renderSettingsTab(container: HTMLElement) {
   var html = '';
 
   // ── Steam Account ──
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Steam Account</div>';
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Steam Account') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">Steam Web API Key <span style="color:var(--luma-ssh-accent,#66c0ff);">(Goldberg achievements)</span></div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:6px;">';
@@ -1758,7 +1785,7 @@ function renderSettingsTab(container: HTMLElement) {
   html += '</div></div>';
 
   // ── Key Generator ──
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Key Generator</div>';
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Key Generator') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:8px;">Manifest pinning for generated Lua scripts</div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
@@ -1768,7 +1795,7 @@ function renderSettingsTab(container: HTMLElement) {
   html += '</div></div>';
 
   // ── About ──
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">About</div>';
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('About') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Steam Store Helper</div>';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.6;">';
@@ -1776,7 +1803,7 @@ function renderSettingsTab(container: HTMLElement) {
   html += '<div>TypeScript + Vite</div>';
   html += '<div>LumaForge CDP Proxy</div>';
   html += '</div></div></div>';
-  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">Keyboard Shortcuts</div>';
+  html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Keyboard Shortcuts') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.8;">';
   html += '<div><kbd style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:10px;">Esc</kbd> Close sidebar</div>';
@@ -1804,7 +1831,7 @@ function wireSteamKeysSection(container: HTMLElement) {
       .then(function(r) { return r.json(); })
       .then(function(data) {
         unpinAllBtn.disabled = false;
-        unpinAllBtn.textContent = 'Unpin All Manifests';
+        unpinAllBtn.textContent = t('Unpin All Manifests');
         if (data && data.ok) {
           statusEl.textContent = data.message || 'Done';
           statusEl.style.color = '#64c882';
@@ -1815,8 +1842,8 @@ function wireSteamKeysSection(container: HTMLElement) {
       })
       .catch(function() {
         unpinAllBtn.disabled = false;
-        unpinAllBtn.textContent = 'Unpin All Manifests';
-        statusEl.textContent = 'Bridge not available';
+        unpinAllBtn.textContent = t('Unpin All Manifests');
+        statusEl.textContent = t('Bridge not available');
         statusEl.style.color = '#e74c3c';
       });
   });
@@ -1877,7 +1904,7 @@ function wireSteamAccountSection(container: HTMLElement) {
           statusEl.style.color = data.ok ? '#64c882' : '#ff6e6e';
         })
         .catch(function() {
-          statusEl.textContent = 'Failed to open URL';
+          statusEl.textContent = t('Failed to open URL');
           statusEl.style.color = '#ff6e6e';
         });
     });
@@ -1955,7 +1982,7 @@ function wireSteamAccountSection(container: HTMLElement) {
       .catch(function() {
         saveBtn.disabled = false;
         saveBtn.textContent = 'Save';
-        statusEl.textContent = 'Save failed';
+        statusEl.textContent = t('Save failed');
         statusEl.style.color = '#ff6e6e';
       });
   });
@@ -2048,7 +2075,7 @@ function applyCloudSaveStatus(s: any): void {
   var provName = CS_PROVIDER_NAMES[s.provider] || '';
   var pl = document.getElementById('luma-cs-provider-line');
   if (pl) {
-    if (!s.provider) pl.textContent = 'No provider configured';
+    if (!s.provider) pl.textContent = t('No provider configured');
     else if (s.provider === 'folder') pl.textContent = s.syncPath || 'Local folder';
     else pl.textContent = provName + (s.loggedIn ? ' \u00b7 ' + (s.accountId || '') : ' \u00b7 not signed in');
   }
@@ -2060,7 +2087,7 @@ function applyCloudSaveStatus(s: any): void {
       badge.style.background = 'rgba(100,200,130,.15)';
       badge.style.color = '#64c882';
     } else {
-      badge.textContent = 'Signed out';
+      badge.textContent = t('Signed out');
       badge.style.background = 'rgba(255,255,255,.06)';
       badge.style.color = '#8f98a0';
     }
@@ -2147,7 +2174,7 @@ function paintCloudSaveGames(): void {
 
   if (files.length === 0) {
     listEl.innerHTML = '<div style="font-size:11px;color:#8f98a0;padding:8px 0;">' +
-      (_cloudsaveApps.length === 0 ? 'No synced games yet' : 'No matches') + '</div>';
+      (_cloudsaveApps.length === 0 ? t('No synced games yet') : t('No matches')) + '</div>';
     return;
   }
 
@@ -2270,7 +2297,7 @@ function renderCloudsaveTab(container: HTMLElement) {
 
   // Stats sync
   html += '<div style="margin-top:12px;">';
-  html += '<div class="luma-sidebar-section-title">Stats Sync</div>';
+  html += '<div class="luma-sidebar-section-title">' + t('Stats Sync') + '</div>';
   html += '<div class="luma-provider-row" style="padding:8px 10px;margin-bottom:6px;"><div style="flex:1;min-width:0;">';
   html += '<div style="font-size:11px;color:#c7d5e0;">Achievements</div>';
   html += '<div style="font-size:9px;color:#8f98a0;">Sync achievement progress with the cloud</div>';
@@ -2485,7 +2512,7 @@ function renderCloudsaveTab(container: HTMLElement) {
           .then(function(r) { return r.json(); })
           .then(function(d) {
             var ok = !!(d && (d.localDeleted || d.cloudDeleted));
-            var msg = (d && d.message) || (ok ? 'Deleted' : 'Delete failed');
+            var msg = (d && d.message) || (ok ? 'Deleted' : t('Delete failed'));
             cloudSaveShowMsg(msg, ok);
             loadCloudSaveStatus();
             loadCloudSaveApps();
@@ -2498,14 +2525,14 @@ function renderCloudsaveTab(container: HTMLElement) {
       }
 
       btn.setAttribute('data-confirm', '1');
-      btn.textContent = 'Confirm?';
+      btn.textContent = t('Confirm?');
       btn.style.color = '#ff6e6e';
       btn.style.borderColor = 'rgba(231,76,60,.5)';
       setTimeout(function() {
         if (!btn.isConnected) return;
         if (btn.getAttribute('data-confirm') === '1') {
           btn.removeAttribute('data-confirm');
-          btn.textContent = 'Delete';
+          btn.textContent = t('Delete');
           btn.style.color = '';
           btn.style.borderColor = '';
         }
@@ -2575,6 +2602,10 @@ function formatTimeAgo(timestamp: number): string {
 export function openSidebar(initialTab?: string) {
   if (document.getElementById(SIDEBAR_ID)) return;
   ensureKeyframes();
+  // Re-resolve theme colors at open time: the theme-reload event can be
+  // missed (session attached after a switch) and stale inline vars would
+  // otherwise paint the panel with a deactivated theme's palette.
+  resolveThemeColors();
 
   if (initialTab) state.currentTab = initialTab;
   state.sidebarOpen = true;
@@ -2601,15 +2632,15 @@ export function openSidebar(initialTab?: string) {
   var headerHtml = '<div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.15);">';
   headerHtml += '<div style="font-size:15px;font-weight:700;color:#fff;">LumaForge <span style="font-size:10px;color:#8f98a0;font-weight:400;">v' + LUMA_VERSION + '</span></div>';
   headerHtml += '<div style="display:flex;align-items:center;gap:6px;">';
-  headerHtml += '<button id="luma-sidebar-refresh" class="luma-ssh-close-btn" title="Refresh current tab" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgRefresh() + '</button>';
-  headerHtml += '<button id="luma-sidebar-close" class="luma-ssh-close-btn" title="Close" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgX() + '</button>';
+  headerHtml += '<button id="luma-sidebar-refresh" class="luma-ssh-close-btn" title="' + t('Refresh current tab') + '" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgRefresh() + '</button>';
+  headerHtml += '<button id="luma-sidebar-close" class="luma-ssh-close-btn" title="' + t('Close') + '" style="background:none;border:none;color:#8f98a0;cursor:pointer;padding:4px;border-radius:4px;display:flex;align-items:center;justify-content:center;">' + svgX() + '</button>';
   headerHtml += '</div>';
   headerHtml += '</div>';
 
   var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;overflow-x:auto;scrollbar-width:none;">';
   for (var i = 0; i < TABS.length; i++) {
     var tab = TABS[i];
-    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 0 auto;white-space:nowrap;padding:10px 4px;text-align:center;font-size:10px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + tab.label + '</button>';
+    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 0 auto;white-space:nowrap;padding:10px 4px;text-align:center;font-size:10px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + t(tab.label) + '</button>';
   }
   tabsHtml += '</div>';
 

@@ -2,6 +2,8 @@ import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL
 import { addHistoryEntry } from '../core/history_sync';
 import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svgBox, svgErrorCircle, svgLibrary } from '../ui/svg';
 import { ST, dot } from '../ui/styles';
+import { resolveThemeColors } from '../ui/themeColor';
+import { t } from '../i18n';
 import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, steamKeysSettingsUrl } from '../ui/helpers';
 import { bridgeFetch } from '../api/bridge';
 import { setButtonState, setButtonLumaState } from '../ui/button';
@@ -42,6 +44,7 @@ export function openSourceModal(appId: string): void {
 
     state.savedFocusElement = document.activeElement;
     closeModal();
+    resolveThemeColors();
 
     var backdrop = document.createElement('div');
     backdrop.setAttribute(MODAL_MARKER_ATTR, MODAL_MARKER_VAL);
@@ -70,11 +73,11 @@ export function openSourceModal(appId: string): void {
     var hdrTitle = document.createElement('div');
     hdrTitle.id = titleId;
     hdrTitle.setAttribute('style', ST.headerTitle);
-    hdrTitle.textContent = 'Select Download Source';
+    hdrTitle.textContent = t('Select Download Source');
     var hdrSubtitle = document.createElement('div');
     hdrSubtitle.id = descId;
     hdrSubtitle.setAttribute('style', ST.headerSubtitle);
-    hdrSubtitle.textContent = 'Choose a trusted provider for this package';
+    hdrSubtitle.textContent = t('Choose a trusted provider for this package');
     hdrTextWrap.appendChild(hdrTitle);
     hdrTextWrap.appendChild(hdrSubtitle);
 
@@ -262,7 +265,7 @@ export function openSourceModal(appId: string): void {
           throw new Error(
             data && data.message
               ? data.message
-              : 'Invalid response from bridge'
+              : t('Invalid response from bridge')
           );
         }
 
@@ -337,7 +340,7 @@ export function openSourceModal(appId: string): void {
         );
 
         var detail = wasTimedOut
-          ? 'The provider check took too long. Please try again.'
+          ? t('The provider check took too long. Please try again.')
           : (
             (error && error.name
               ? error.name
@@ -345,13 +348,13 @@ export function openSourceModal(appId: string): void {
             ': ' +
             (error && error.message
               ? error.message
-              : 'Unknown provider error')
+              : t('Unknown provider error'))
           );
 
         body.innerHTML =
           '<div style="' + ST.errorWrap + '">' +
           '<div style="' + ST.errorMsg + '">' +
-          'Could not check package sources.' +
+          t('Could not check package sources.') +
           '</div>' +
           '<div style="' + ST.errorDetail + '">' +
           detail +
@@ -406,7 +409,7 @@ export function renderSources(
     function buildBlockedCard(source: any) {
       var sourceId = source.id || '';
       var sourceName = source.name || sourceId || 'Provider';
-      var reason = source.detail || 'Package not available';
+      var reason = source.detail || t('Package not available');
       var pstat = findProviderStat(sourceId);
       var keyBlocked =
         source.keyError === true ||
@@ -417,7 +420,7 @@ export function renderSources(
           source.detail === 'Package available' ||
           source.detail === 'Package not available')
       ) {
-        reason = 'API key expired or invalid';
+        reason = t('API key expired or invalid');
       }
 
       var card = document.createElement('div');
@@ -448,7 +451,7 @@ export function renderSources(
 
         if (remainingMs <= 0) {
           expiryClass = 'expired';
-          expiryText = 'API Key Expired';
+          expiryText = t('API Key Expired');
         } else {
           var days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
           var hours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
@@ -461,7 +464,7 @@ export function renderSources(
           usageParts.push(pstat.remainingToday + '/' + pstat.dailyLimit + ' downloads today');
         }
         if (pstat.canMakeRequests === false) {
-          usageParts.push('Requests unavailable');
+          usageParts.push(t('Requests unavailable'));
         }
 
         var expiryBadge = document.createElement('div');
@@ -490,7 +493,7 @@ export function renderSources(
       } else if (pstat && !pstat.hasKey) {
         var noKeyLine = document.createElement('div');
         noKeyLine.setAttribute('style', 'font-size:10px;color:var(--luma-ssh-error,#e74c3c);margin-top:3px;');
-        noKeyLine.textContent = 'No API key configured';
+        noKeyLine.textContent = t('No API key configured');
         info.appendChild(noKeyLine);
       }
 
@@ -515,12 +518,12 @@ export function renderSources(
       body.innerHTML =
         '<div style="' + ST.errorWrap + '">' +
         '<div style="' + ST.errorMsg + '">' +
-        'No package sources available.' +
+        t('No package sources available.') +
         '</div>' +
         '<div style="' + ST.errorDetail + '">' +
         (
           message ||
-          'No enabled provider currently has a package for this App ID.'
+          t('No enabled provider currently has a package for this App ID.')
         ) +
         '</div>' +
         '</div>';
@@ -663,7 +666,7 @@ export function renderSources(
         }
 
         if (cardSourceStats.can_make_requests === false) {
-          usageParts.push('Requests unavailable');
+          usageParts.push(t('Requests unavailable'));
         }
 
         if (usageParts.length > 0) {
@@ -815,7 +818,7 @@ export function renderSources(
         'font-size:11px;color:var(--luma-ssh-text-muted,#8f98a0);font-weight:600;text-transform:uppercase;' +
         'letter-spacing:.5px;margin-top:14px;margin-bottom:6px;padding-left:2px;'
       );
-      blockedHeader.textContent = 'Unavailable Sources';
+      blockedHeader.textContent = t('Unavailable Sources');
       body.appendChild(blockedHeader);
 
       unavailableSources.forEach(function (src) {
@@ -862,7 +865,7 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
         return r.json();
       })
       .then(function (d) {
-        if (!d || !d.ok) throw new Error((d && d.message) || 'Download rejected');
+        if (!d || !d.ok) throw new Error((d && d.message) || t('Download rejected'));
         console.log('[LUMA_INJECT] Download accepted for', appId, 'via', sourceId, 'requestId:', d.requestId);
 
         state.requestContext = {
@@ -1032,7 +1035,7 @@ export function startDownloadPoll(requestId: string, appId: string): void {
             type: 'source', status: 'failed', timestamp: Date.now(),
             progress: d.progress || 0, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
           });
-          showDownloadError(appId, d.message || 'Download failed', d.errorCode);
+          showDownloadError(appId, d.message || t('Download failed'), d.errorCode);
           notifySettled();
           return;
         }

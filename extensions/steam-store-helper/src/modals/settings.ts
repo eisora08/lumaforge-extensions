@@ -4,6 +4,7 @@ import { ST } from '../ui/styles';
 import { esc, bridgeUrl, downloadsQueueUrl } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
 import { closeModal } from './source';
+import { t } from '../i18n';
 import { openSidebar } from '../sidebar/SidebarPanel';
 
 var SETTINGS_BTN_ID = 'luma-ssh-settings-btn';
@@ -219,10 +220,10 @@ export function openSettingsModal(): void {
     var hdrTitle = document.createElement('div');
     hdrTitle.id = titleId;
     hdrTitle.setAttribute('style', ST.headerTitle);
-    hdrTitle.textContent = 'Provider Settings';
+    hdrTitle.textContent = t('Provider Settings');
     var hdrSubtitle = document.createElement('div');
     hdrSubtitle.setAttribute('style', ST.headerSubtitle);
-    hdrSubtitle.textContent = 'Configure download providers and API keys';
+    hdrSubtitle.textContent = t('Configure download providers and API keys');
     hdrTextWrap.appendChild(hdrTitle);
     hdrTextWrap.appendChild(hdrSubtitle);
 
@@ -230,7 +231,7 @@ export function openSettingsModal(): void {
     closeBtn.type = 'button';
     closeBtn.setAttribute('class', 'luma-ssh-close-btn');
     closeBtn.setAttribute('style', ST.closeBtn);
-    closeBtn.setAttribute('aria-label', 'Close');
+    closeBtn.setAttribute('aria-label', t('Close'));
     closeBtn.innerHTML = svgX();
     closeBtn.addEventListener('click', closeModal);
 
@@ -258,7 +259,7 @@ export function openSettingsModal(): void {
     var testAllBtn = document.createElement('button');
     testAllBtn.type = 'button';
     testAllBtn.setAttribute('style', ST.cancelBtn);
-    testAllBtn.textContent = 'Test All';
+    testAllBtn.textContent = t('Test All');
     testAllBtn.addEventListener('click', function() {
       var allRows = body.querySelectorAll('[data-provider-row]');
       allRows.forEach(function(row) {
@@ -270,7 +271,7 @@ export function openSettingsModal(): void {
     var saveBtn = document.createElement('button');
     saveBtn.type = 'button';
     saveBtn.setAttribute('style', (ST as any).downloadBtn || ST.primaryBtn);
-    saveBtn.textContent = 'Save Settings';
+    saveBtn.textContent = t('Save Settings');
     saveBtn.addEventListener('click', function() {
       saveSettings(body);
     });
@@ -294,7 +295,7 @@ export function openSettingsModal(): void {
         return r.json();
       })
       .then(function(data) {
-        if (!data.ok) throw new Error(data.message || 'Failed to load settings');
+        if (!data.ok) throw new Error(data.message || t('Failed to load settings'));
         renderSettingsProviders(body, data.providers || []);
       })
       .catch(function(err) {
@@ -381,7 +382,7 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
       var keyInput = row.querySelector('[data-provider-key]') as HTMLInputElement;
       var statusEl = row.querySelector('[id^="luma-setting-test-"]') as HTMLElement;
 
-      (btn as HTMLButtonElement).textContent = 'Testing\u2026';
+      (btn as HTMLButtonElement).textContent = t('Testing\u2026');
       (btn as HTMLButtonElement).disabled = true;
       statusEl.textContent = '';
       statusEl.style.color = 'rgba(255,255,255,.4)';
@@ -401,7 +402,7 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
       }, 'settings-test', {})
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          (btn as HTMLButtonElement).textContent = 'Test';
+          (btn as HTMLButtonElement).textContent = t('Test');
           (btn as HTMLButtonElement).disabled = false;
           if (data.ok) {
             statusEl.textContent = '\u2713 ' + data.message;
@@ -412,7 +413,7 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
           }
         })
         .catch(function(err) {
-          (btn as HTMLButtonElement).textContent = 'Test';
+          (btn as HTMLButtonElement).textContent = t('Test');
           (btn as HTMLButtonElement).disabled = false;
           statusEl.textContent = '\u2717 Error: ' + (err.message || err);
           statusEl.style.color = '#e74c3c';
@@ -445,7 +446,7 @@ export function saveSettings(container: HTMLElement): void {
 
   var saveBtn = container.closest('[role="dialog"]')!.querySelector('button:last-child') as HTMLButtonElement;
   if (saveBtn) {
-    saveBtn.textContent = 'Saving\u2026';
+    saveBtn.textContent = t('Saving\u2026');
     saveBtn.disabled = true;
   }
 
@@ -468,7 +469,7 @@ export function saveSettings(container: HTMLElement): void {
     })
     .catch(function(err) {
       if (saveBtn) {
-        saveBtn.textContent = 'Save Settings';
+        saveBtn.textContent = t('Save Settings');
         saveBtn.disabled = false;
       }
     });
