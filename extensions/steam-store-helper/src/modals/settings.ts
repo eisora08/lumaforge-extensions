@@ -30,6 +30,17 @@ function transientReason(): string {
     if (!body) return 'no body';
     var cls = body.className || '';
     if (cls.indexOf('ContextMenuPopupBody') !== -1) return 'context menu popup';
+    // Steam writes these classes into <body> at CreatePopup document.write
+    // time, so they are already present when the plugin script runs:
+    // ModalDialogBody = Settings / Properties / promos / alerts (legacy modal,
+    // ModalDialogPopup overlay, alert popups), HoverPopupBody = supernavs and
+    // other hover popups.
+    if (cls.indexOf('ModalDialogBody') !== -1) return 'modal dialog popup';
+    if (cls.indexOf('HoverPopupBody') !== -1) return 'hover popup';
+    // Friends List / chat windows carry "fullheight" as body (too generic) but
+    // always set friendsui-container on <html>.
+    var htmlCls = (document.documentElement && document.documentElement.className) || '';
+    if (htmlCls.indexOf('friendsui-container') !== -1) return 'friends/chat window';
     if (cls.indexOf('GamepadUI') !== -1) return 'gamepad ui';
     if (window.innerWidth < 480 || window.innerHeight < 400) return 'tiny window ' + window.innerWidth + 'x' + window.innerHeight;
     // Login / Steam Guard surface: the SPA never changes the pathname (Steam
@@ -64,6 +75,8 @@ function docIdentity(): string {
       ' query=' + (location.search || '-').slice(0, 40) +
       ' bodyChildren=' + (b ? b.childElementCount : 0) +
       ' firstChild=' + desc +
+      ' bodyCls=' + JSON.stringify(((b && b.className) || '').slice(0, 120)) +
+      ' htmlCls=' + JSON.stringify(((document.documentElement && document.documentElement.className) || '').slice(0, 80)) +
       ' popupTarget=' + (document.getElementById('popup_target') ? 'Y' : 'N') +
       ' size=' + window.innerWidth + 'x' + window.innerHeight;
   } catch (_) { }
