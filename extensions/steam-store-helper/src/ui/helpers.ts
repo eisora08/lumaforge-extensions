@@ -170,6 +170,24 @@ export function esc(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+// ---------------------------------------------------------------------------
+// Forensic relay: the CEF console channel can die mid-session (observed
+// 11:25 repro: cef_hook.log stopped 6s before the action), losing every
+// console.log trace. POST critical lines to /api/jslog so they always land
+// in steamcdp_proxy.log. Fire-and-forget, never throws, never blocks.
+// ---------------------------------------------------------------------------
+export function jsLog(msg: string): void {
+  try {
+    fetch(bridgeUrl('/api/jslog'), {
+      method: 'POST',
+      mode: 'cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: String(msg).slice(0, 500),
+      cache: 'no-store'
+    }).catch(function () { });
+  } catch (_) { }
+}
+
 export function detectBridgePort(): Promise<void> {
   if (bridgeConfig.detected) return Promise.resolve();
   // 21777 was luma-lite's port — removed: probing it stalled detection and

@@ -1,5 +1,6 @@
-import { luaFilesUrl, luaFileDeleteUrl, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl } from './helpers';
+import { luaFilesUrl, luaFileDeleteUrl, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl, jsLog } from './helpers';
 import { openFixesModal } from '../modals/fixes';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Library "Manage" submenu injection.
@@ -44,6 +45,27 @@ var interactAt = 0;
 // Last scanMenus() skip reason — logged only when it changes (scan runs on
 // every popup mutation, logging every call would flood the console).
 var _lastScanSkip = '';
+
+// Steam's own menu labels, in every language we ship detection for (english,
+// spanish, latam). Exact matches for rows/labels, substring matches for menu
+// text. All detection previously hard-coded the English literals, so on a
+// Spanish Steam every path silently missed ("Ver archivos locales" never
+// matched "Browse local files").
+var STR_MANAGE = ['Manage', 'Administrar'];
+var STR_BROWSE = ['Browse local files', 'Ver archivos locales', 'Explorar archivos locales'];
+var STR_UNINSTALL = ['Uninstall', 'Desinstalar'];
+
+function matchTxt(v: string | null | undefined, set: string[]): boolean {
+  var s = (v || '').trim();
+  for (var i = 0; i < set.length; i++) if (s === set[i]) return true;
+  return false;
+}
+
+function hasTxt(v: string | null | undefined, set: string[]): boolean {
+  var s = v || '';
+  for (var i = 0; i < set.length; i++) if (s.indexOf(set[i]) !== -1) return true;
+  return false;
+}
 
 function isVisibleEl(el: Element): boolean {
   try { return (el as HTMLElement).getClientRects().length > 0; } catch (_) { return false; }
@@ -343,8 +365,8 @@ function onMouseOver(e: MouseEvent): void {
     // aria-haspopup and raw text.
     var item = t.closest ? (t.closest('.contextMenuItem') ||
       t.closest('[role="menuitem"]') || t.closest('[aria-haspopup]')) : null;
-    if (item && (item.textContent || '').trim() === 'Manage') manageHoverAt = Date.now();
-    else if (!item && (t.textContent || '').trim() === 'Manage') manageHoverAt = Date.now();
+    if (item && matchTxt(item.textContent, STR_MANAGE)) manageHoverAt = Date.now();
+    else if (!item && matchTxt(t.textContent, STR_MANAGE)) manageHoverAt = Date.now();
   } catch (_) { }
 }
 
@@ -352,11 +374,13 @@ function onClickCapture(e: MouseEvent): void {
   try {
     var t: any = e.target;
     if (!t || !t.closest) return;
-    var manage = t.closest('[aria-label="Manage"]');
-    // Class-agnostic trigger: a menuitem whose text is exactly "Manage" (the
-    // popup menu, not the details-page button which carries aria-label).
+    var manage = t.closest ? t.closest('[aria-label]') : null;
+    if (manage && !matchTxt(manage.getAttribute('aria-label'), STR_MANAGE)) manage = null;
+    // Class-agnostic trigger: a menuitem whose text is exactly the localized
+    // "Manage" (the popup menu, not the details-page button which carries
+    // aria-label).
     var mi = t.closest('[role="menuitem"]') || t.closest('.contextMenuItem');
-    if (!manage && mi && (mi.textContent || '').trim() === 'Manage') manage = mi;
+    if (!manage && mi && matchTxt(mi.textContent, STR_MANAGE)) manage = mi;
     if (!manage) return;
     interactAt = Date.now();
     var id = appIdFromNode(t) || lastHoverAppId;
@@ -426,7 +450,10 @@ function menuDump(doc: Document): string {
 // Menu data (lua file existence + pin state)
 // ---------------------------------------------------------------------------
 function prefetchMenuData(appId: string): void {
-  if (menuData && menuData.appId === appId && menuData.ready) return;
+  // Always refetch: the dashboard (sidebar) mutates lua/pin state through its
+  // own requests and this cache never saw those changes — a stale menuData
+  // meant "Delete Lua" missing after a re-download (and vice versa) until
+  // Steam restarted. dataSeq still guards out-of-order responses.
   var seq = ++dataSeq;
   menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: false };
   console.log('[LUMA_INJECT] Manage menu prefetch appid=' + appId);
@@ -443,6 +470,7 @@ function prefetchMenuData(appId: string): void {
       if (!hasLua) {
         menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: true };
         console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId + ' lua=false');
+        jsLog('MENU data app=' + appId + ' lua=false');
         scanAll();
         return;
       }
@@ -460,6 +488,8 @@ function prefetchMenuData(appId: string): void {
           };
           console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId +
             ' lua=true pins=' + menuData.hasPins + ' installed=' + menuData.installed);
+          jsLog('MENU data app=' + appId + ' lua=true pins=' + menuData.hasPins +
+            ' installed=' + menuData.installed);
           scanAll();
         })
         .catch(function () {
@@ -473,6 +503,7 @@ function prefetchMenuData(appId: string): void {
       if (seq !== dataSeq) return;
       menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: true };
       console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId + ' lua=false (lua fetch failed)');
+      jsLog('MENU data app=' + appId + ' lua=false (LUA FETCH FAILED)');
       scanAll();
     });
 }
@@ -597,7 +628,7 @@ function scanMenus(doc?: Document): void {
       if (el.querySelector('[role="menu"]')) continue;
       var t = el.textContent || '';
       if (t.length >= 400) continue;
-      if (t.indexOf('Browse local files') === -1 || t.indexOf('Uninstall') === -1) continue;
+      if (!hasTxt(t, STR_BROWSE) || !hasTxt(t, STR_UNINSTALL)) continue;
       if (!isVisibleEl(el)) continue;
       if (t.length < bestLen) { best = el; bestLen = t.length; }
     }
@@ -626,9 +657,10 @@ function findRowContents(d: Document): { contents: HTMLElement; proto: HTMLEleme
     var el = cands[i] as HTMLElement;
     if (el.children.length > 3) continue;
     var t = (el.textContent || '').trim();
-    if (t !== 'Browse local files' && t !== 'Uninstall') continue;
+    var isBrowse = matchTxt(t, STR_BROWSE);
+    if (!isBrowse && !matchTxt(t, STR_UNINSTALL)) continue;
     if (!isVisibleEl(el)) continue;
-    if (t === 'Browse local files') { proto = el; break; }
+    if (isBrowse) { proto = el; break; }
     if (!proto) proto = el;
   }
   if (!proto) return null;
@@ -639,7 +671,7 @@ function findRowContents(d: Document): { contents: HTMLElement; proto: HTMLEleme
     var p = cur.parentElement as HTMLElement | null;
     if (!p) return null;
     var pt = p.textContent || '';
-    if (pt.indexOf('Browse local files') !== -1 && pt.indexOf('Uninstall') !== -1 &&
+    if (hasTxt(pt, STR_BROWSE) && hasTxt(pt, STR_UNINSTALL) &&
       p.childElementCount >= 2 && isVisibleEl(p)) {
       return { contents: p, proto: cur };
     }
@@ -653,8 +685,13 @@ function tryAriaPath(d: Document): boolean {
   var els = d.querySelectorAll('[aria-haspopup], [aria-controls]');
   for (var i = 0; i < els.length; i++) {
     var el = els[i] as HTMLElement;
+    // The trigger must be a menu row: the details-page "Manage" button also
+    // carries aria-label + aria-controls and must never be a match source.
+    if (!el.hasAttribute('aria-haspopup') &&
+      !(el.closest && (el.closest('[role="menuitem"]') || el.closest('.contextMenuItem') ||
+        el.closest('[role="menu"]') || el.closest('.contextMenu')))) continue;
     var t = (el.getAttribute('aria-label') || el.textContent || '').trim();
-    if (t !== 'Manage') continue;
+    if (!matchTxt(t, STR_MANAGE)) continue;
     var cid = el.getAttribute('aria-controls');
     var target = cid ? d.getElementById(cid) : null;
     if (!target || !isVisibleEl(target)) continue;
@@ -668,7 +705,7 @@ function isManageMenu(d: Document, menu: Element): boolean {
   if (!isVisibleEl(menu)) return false;
   var t = menu.textContent || '';
   // Installed games: Steam renders both of these only inside the Manage submenu.
-  if (t.indexOf('Browse local files') !== -1 && t.indexOf('Uninstall') !== -1) return true;
+  if (hasTxt(t, STR_BROWSE) && hasTxt(t, STR_UNINSTALL)) return true;
   // Not installed: neither entry exists, so identify the submenu by its
   // aria-labelledby → hidden "Manage" label. Class-agnostic: look for any
   // [aria-labelledby] descendant (hashed classes on the other PC).
@@ -678,20 +715,60 @@ function isManageMenu(d: Document, menu: Element): boolean {
     (menu.getAttribute && menu.getAttribute('aria-labelledby')));
   if (lb) {
     var lbl = d.getElementById(lb) || menu.ownerDocument.getElementById(lb);
-    if (lbl && (lbl.textContent || '').trim() === 'Manage') return true;
+    if (lbl && matchTxt(lbl.textContent, STR_MANAGE)) return true;
   }
-  // Last resort: right after hovering "Manage", any SMALL visible menu that
-  // is not itself a menu listing "Manage" (the root menu does) is the target.
-  // The size cap keeps large panels (store search filter buckets, details
-  // panels) from matching — that was the false positive on the other PC.
+  // Hover fallback, structurally gated: right after hovering "Manage" the
+  // submenu that opens is accepted only when it is LINKED to the menu that
+  // hosts the "Manage" trigger (appended right after it, or inside the same
+  // wrapper with no other visible menu in between). The previous version
+  // accepted ANY small visible menu within the 2s window, which is how our
+  // items leaked into every other menu (supernavs, root menus, notifications).
   if (Date.now() - manageHoverAt > 2000) return false;
   if (t.length >= 400) return false;
   var items = menu.querySelectorAll('.contextMenuItem, [role="menuitem"]');
   if (!items.length) return false;
   for (var i = 0; i < items.length; i++) {
-    if ((items[i].textContent || '').trim() === 'Manage') return false;
+    if (matchTxt(items[i].textContent, STR_MANAGE)) return false; // the parent/root menu itself
   }
-  return true;
+  return linkedManageSubmenu(d, menu);
+}
+
+// Is `menu` the submenu opened from a visible menu that hosts a "Manage"
+// trigger row? Steam appends the hover submenu directly after its parent menu
+// (or inside the parent's wrapper) — no other visible menu sits between them.
+function linkedManageSubmenu(d: Document, menu: Element): boolean {
+  var menus = d.querySelectorAll('.contextMenu, [role="menu"]');
+  for (var i = 0; i < menus.length; i++) {
+    var m = menus[i];
+    if (m === menu) continue;
+    if (!isVisibleEl(m)) continue;
+    if (!menuHasManageRow(m)) continue;
+    if (m.nextElementSibling === menu) return true;
+    var nx = m.nextElementSibling;
+    if (nx && nx.contains && nx.contains(menu)) return true;
+    if (m.parentNode && m.parentNode === menu.parentNode) {
+      var pos = m.compareDocumentPosition(menu);
+      if ((pos & 4 /* DOCUMENT_POSITION_FOLLOWING */) !== 0) {
+        var el = m.nextElementSibling;
+        var ok = true;
+        while (el && el !== menu) {
+          if (el.querySelector && (el.classList.contains('contextMenu') ||
+            el.getAttribute('role') === 'menu') && isVisibleEl(el)) { ok = false; break; }
+          el = el.nextElementSibling;
+        }
+        if (ok) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function menuHasManageRow(m: Element): boolean {
+  var its = m.querySelectorAll('.contextMenuItem, [role="menuitem"], [aria-haspopup]');
+  for (var i = 0; i < its.length; i++) {
+    if (matchTxt(its[i].textContent, STR_MANAGE)) return true;
+  }
+  return false;
 }
 
 // Resolve the item container from a menu/contents/submenu-root candidate:
@@ -703,13 +780,13 @@ function resolveContents(d: Document, menu: Element): HTMLElement | null {
   var lbSelf = menu.getAttribute && menu.getAttribute('aria-labelledby');
   if (lbSelf) {
     var l0 = d.getElementById(lbSelf);
-    if (l0 && (l0.textContent || '').trim() === 'Manage') return menu as HTMLElement;
+    if (l0 && matchTxt(l0.textContent, STR_MANAGE)) return menu as HTMLElement;
   }
   var byLb = menu.querySelector('[aria-labelledby]');
   if (byLb) {
     var lb2 = byLb.getAttribute('aria-labelledby');
     var l1 = lb2 ? d.getElementById(lb2) : null;
-    if (l1 && (l1.textContent || '').trim() === 'Manage') return byLb as HTMLElement;
+    if (l1 && matchTxt(l1.textContent, STR_MANAGE)) return byLb as HTMLElement;
   }
   if (menu.querySelector('[role="menuitem"]')) return menu as HTMLElement;
   var kids = menu.children;
@@ -740,13 +817,16 @@ function desiredActions(d: MenuData): string[] {
   return out;
 }
 
-var ACTION_LABELS: Record<string, string> = {
-  'fixes': 'Game Fixes',
-  'pin-current': 'Pin to Current Version',
-  'pin-latest': 'Pin to Latest Version',
-  'unpin': 'Unpin Manifest',
-  'delete': 'Delete Lua…'
-};
+function actionLabel(action: string): string {
+  switch (action) {
+    case 'fixes': return t('Game Fixes');
+    case 'pin-current': return t('Pin to Current Version');
+    case 'pin-latest': return t('Pin to Latest Version');
+    case 'unpin': return t('Unpin Manifest');
+    case 'delete': return t('Delete Lua…');
+    default: return action;
+  }
+}
 
 function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null): void {
   var md = menuData;
@@ -796,13 +876,13 @@ function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null)
     // "Uninstall" (the menu's stable last entry).
     var rows = contents.children;
     for (var q = rows.length - 1; q >= 0; q--) {
-      if ((rows[q].textContent || '').trim() === 'Uninstall') { anchor = rows[q]; break; }
+      if (matchTxt((rows[q].textContent || ''), STR_UNINSTALL)) { anchor = rows[q]; break; }
     }
   }
 
   var frag = d.createDocumentFragment();
   for (var a = 0; a < desired.length; a++) {
-    frag.appendChild(makeItem(d, proto, protoClass, protoLabelClass, ACTION_LABELS[desired[a]], desired[a]));
+    frag.appendChild(makeItem(d, proto, protoClass, protoLabelClass, actionLabel(desired[a]), desired[a]));
   }
   if (anchor) contents.insertBefore(frag, anchor);
   else contents.appendChild(frag);
@@ -810,6 +890,8 @@ function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null)
     ' appid=' + ctxAppId + ' anchor=' + (anchor ? 'separator' : 'end') +
     ' proto=' + (proto ? JSON.stringify(protoClass.slice(0, 60)) : 'none') +
     ' contents=' + JSON.stringify((contents.getAttribute('class') || contents.tagName).slice(0, 60)));
+  jsLog('MENU items injected: ' + desired.join(',') + ' appid=' + ctxAppId +
+    ' anchor=' + (anchor ? 'separator' : 'end'));
 }
 
 function makeItem(
@@ -865,13 +947,21 @@ function setItemLabel(item: HTMLElement, label: string): void {
 function closeMenu(menu: Element | null): void {
   if (!menu) return;
   try {
+    console.log('[LUMA_INJECT] ACTION closeMenu via Escape (' + (menu.className || menu.tagName) + ')');
     menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, which: 27, bubbles: true } as any));
-  } catch (_) { }
+  } catch (e) {
+    console.warn('[LUMA_INJECT] ACTION closeMenu error:', e && (e as any).message);
+  }
 }
 
 function handleAction(action: string, item: HTMLElement): void {
   var appId = ctxAppId;
-  if (!appId) return;
+  console.log('[LUMA_INJECT] ACTION begin action=' + action + ' appId=' + appId);
+  jsLog('ACTION begin action=' + action + ' appId=' + appId);
+  if (!appId) {
+    console.warn('[LUMA_INJECT] ACTION abort: no appId');
+    return;
+  }
   // Class-agnostic: hashed .contextMenu won't exist on the other PC; the
   // item itself (role=menuitem) bubbles the Escape just as well.
   var menu = (item.closest('.contextMenu') || item.closest('[role="menu"]') ||
@@ -888,6 +978,7 @@ function handleAction(action: string, item: HTMLElement): void {
     var url = action === 'unpin' ? steamKeysUnpinUrl() : steamKeysPinUrl();
     var mode = action === 'pin-current' ? 'current' : 'latest';
     var payload = action === 'unpin' ? { appId: appId } : { appId: appId, mode: mode };
+    console.log('[LUMA_INJECT] ACTION ' + action + ' fetching ' + url + ' payload=' + JSON.stringify(payload));
     fetch(url, {
       method: 'POST',
       mode: 'cors',
@@ -896,10 +987,18 @@ function handleAction(action: string, item: HTMLElement): void {
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        console.log('[LUMA_INJECT] ACTION ' + action + ' response ok=' + !!(res && res.ok) +
+          ' msg=' + JSON.stringify((res && res.message) || null));
+        jsLog('ACTION ' + action + ' response ok=' + !!(res && res.ok) +
+          ' msg=' + JSON.stringify((res && res.message) || null));
         if (!res || !res.ok) console.warn('[LUMA_INJECT] Menu pin op failed:', res && res.message);
         menuData = null;
       })
-      .catch(function () { menuData = null; });
+      .catch(function (e) {
+        console.warn('[LUMA_INJECT] ACTION ' + action + ' fetch error:', e && e.message);
+        jsLog('ACTION ' + action + ' fetch error=' + (e && e.message));
+        menuData = null;
+      });
     return;
   }
 
@@ -908,22 +1007,31 @@ function handleAction(action: string, item: HTMLElement): void {
     // click (within 3s) deletes.
     if (item.getAttribute('data-confirm') !== '1') {
       item.setAttribute('data-confirm', '1');
-      setItemLabel(item, 'Confirm delete?');
+      setItemLabel(item, t('Confirm delete?'));
       setTimeout(function () {
         if (item.getAttribute('data-confirm') === '1') {
           item.removeAttribute('data-confirm');
-          setItemLabel(item, 'Delete Lua…');
+          setItemLabel(item, t('Delete Lua…'));
         }
       }, 3000);
       return;
     }
     closeMenu(menu);
+    console.log('[LUMA_INJECT] ACTION delete fetching DELETE ' + luaFileDeleteUrl(appId));
+    jsLog('ACTION delete fetching app=' + appId);
     fetch(luaFileDeleteUrl(appId), { method: 'DELETE', mode: 'cors', cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (res) {
+        console.log('[LUMA_INJECT] ACTION delete response ok=' + !!(res && res.ok) +
+          ' removedFile=' + JSON.stringify(res && res.removedFile));
+        jsLog('ACTION delete response ok=' + !!(res && res.ok) +
+          ' removedFile=' + JSON.stringify(res && res.removedFile));
         if (res && res.ok) menuData = null;
       })
-      .catch(function () { });
+      .catch(function (e) {
+        console.warn('[LUMA_INJECT] ACTION delete fetch error:', e && e.message);
+        jsLog('ACTION delete fetch error=' + (e && e.message));
+      });
     return;
   }
 }
