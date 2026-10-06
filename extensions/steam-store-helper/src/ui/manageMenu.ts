@@ -37,6 +37,98 @@ var obsTimer: ReturnType<typeof setInterval> | null = null;
 // opens right after is the one we want (works even when the game is not
 // installed and Steam renders neither "Browse local files" nor "Uninstall").
 var manageHoverAt = 0;
+// Last pointer interaction (any hover/click/right-click in a bound doc).
+// The class-agnostic heavy paths (whole-doc row search) only run within a
+// few seconds of activity so idle MutationObserver churn stays cheap.
+var interactAt = 0;
+// Last scanMenus() skip reason — logged only when it changes (scan runs on
+// every popup mutation, logging every call would flood the console).
+var _lastScanSkip = '';
+
+function isVisibleEl(el: Element): boolean {
+  try { return (el as HTMLElement).getClientRects().length > 0; } catch (_) { return false; }
+}
+
+// Steam creates context menus as separate `window.open("about:blank?...")`
+// popups (CreatePopup in library.js) on some PCs — about:blank popups inherit
+// the steamloopback origin, so from this document we can reach into them,
+// bind listeners/observers on their document and inject there. The proxy does
+// not inject into about:blank targets, so this wrapper is the only way our
+// script participates in those menus.
+interface PopupEntry {
+  win: Window;
+  doc: Document | null;
+  obs: MutationObserver | null;
+  timer: ReturnType<typeof setInterval> | null;
+}
+var _origOpen: any = null;
+var popups: PopupEntry[] = [];
+
+// Steam keeps the registry of every popup window in `g_PopupManager`
+// (library.js assigns window.g_PopupManager). Menus are created through it
+// and CreatePopup REUSES an existing popup by name — window.open is never
+// called again, which is why the open-wrapper alone never fires on the PC
+// where menus render in a separate window. The manager lives in the realm
+// that owns the popups; our document is itself a popup (opener=Y), so probe
+// self, opener and opener-of-opener for it.
+var _hookedMgrs: any[] = [];
+var _mgrUnregs: Array<() => void> = [];
+
+function popupManagers(): any[] {
+  var out: any[] = [];
+  var roots: any[] = [];
+  try { roots.push(window); } catch (_) { }
+  try { if (window.opener) roots.push(window.opener); } catch (_) { }
+  try { if (window.opener && (window.opener as any).opener) roots.push((window.opener as any).opener); } catch (_) { }
+  for (var i = 0; i < roots.length; i++) {
+    try {
+      var m = roots[i].g_PopupManager;
+      if (m && typeof m.GetPopups === 'function' && out.indexOf(m) === -1) out.push(m);
+    } catch (_) { }
+  }
+  return out;
+}
+
+function popupWindowOf(p: any): Window | null {
+  try {
+    return (p && (p.window || (p.m_popup && p.m_popup.window))) || null;
+  } catch (_) { return null; }
+}
+
+// Register a created-callback once per manager + sweep the existing list.
+function hookManagers(): void {
+  var ms = popupManagers();
+  for (var i = 0; i < ms.length; i++) {
+    var m = ms[i];
+    if (_hookedMgrs.indexOf(m) !== -1) continue;
+    _hookedMgrs.push(m);
+    try {
+      if (typeof m.AddPopupCreatedCallback === 'function') {
+        var r = m.AddPopupCreatedCallback(function (p: any) {
+          try { trackPopupWin(popupWindowOf(p), 'mgr-cb'); } catch (_) { }
+        });
+        if (r && typeof r.Unregister === 'function') {
+          _mgrUnregs.push(function (u: any) { return function () { try { u(); } catch (_) { } }; }(r.Unregister));
+        }
+      }
+      console.log('[LUMA_INJECT] g_PopupManager hooked (' + _hookedMgrs.length + ' realm(s))');
+    } catch (_) { }
+    sweepManager(m);
+  }
+}
+
+function sweepManager(m: any): void {
+  try {
+    var it = m.GetPopups();
+    var s;
+    while (!(s = it.next()).done) trackPopupWin(popupWindowOf(s.value), 'mgr-sweep');
+  } catch (_) { }
+}
+
+function sweepManagers(): void {
+  var ms = popupManagers();
+  for (var i = 0; i < ms.length; i++) sweepManager(ms[i]);
+}
 
 export function startManageMenu(): void {
   if (bound) return;
@@ -44,8 +136,25 @@ export function startManageMenu(): void {
   document.addEventListener('contextmenu', onContextMenu, true);
   document.addEventListener('mouseover', onMouseOver, true);
   document.addEventListener('click', onClickCapture, true);
+  wrapWindowOpen();
+  hookManagers();
   ensurePopupObs();
-  obsTimer = setInterval(ensurePopupObs, 2000);
+  obsTimer = setInterval(tick, 1000);
+  console.log('[LUMA_INJECT] Manage menu bound (url=' + location.href +
+    ' opener=' + (window.opener ? 'Y' : 'N') +
+    ' gMgr(self/opener)=' + (hasMgr(window) ? 'Y' : 'N') + '/' +
+    (window.opener && hasMgr(window.opener) ? 'Y' : 'N') + ')');
+}
+
+function hasMgr(w: any): boolean {
+  try { return !!(w && w.g_PopupManager && typeof w.g_PopupManager.GetPopups === 'function'); }
+  catch (_) { return false; }
+}
+
+function tick(): void {
+  ensurePopupObs();
+  hookManagers();
+  sweepManagers();
 }
 
 export function stopManageMenu(): void {
@@ -54,12 +163,106 @@ export function stopManageMenu(): void {
   document.removeEventListener('contextmenu', onContextMenu, true);
   document.removeEventListener('mouseover', onMouseOver, true);
   document.removeEventListener('click', onClickCapture, true);
+  unwrapWindowOpen();
+  for (var i = 0; i < _mgrUnregs.length; i++) { try { _mgrUnregs[i](); } catch (_) { } }
+  _mgrUnregs.length = 0;
+  _hookedMgrs.length = 0;
   if (obsTimer) { clearInterval(obsTimer); obsTimer = null; }
   if (popupObs) { popupObs.disconnect(); popupObs = null; }
   obsTarget = null;
   ctxAppId = null;
   lastHoverAppId = null;
   menuData = null;
+}
+
+// ---------------------------------------------------------------------------
+// window.open wrapper — track Steam popups (context menus render there on
+// some PCs) and mirror our listeners + a mutation observer into each popup
+// document we can reach (about:blank inherits our origin).
+// ---------------------------------------------------------------------------
+function wrapWindowOpen(): void {
+  if (_origOpen) return;
+  try {
+    _origOpen = window.open;
+    var orig = _origOpen;
+    (window as any).open = function (this: any) {
+      var w: Window | null = null;
+      try { w = orig.apply(this, arguments as any); } catch (e) { throw e; }
+      try { trackPopup(w, arguments[0]); } catch (_) { }
+      return w;
+    };
+  } catch (_) { }
+}
+
+function unwrapWindowOpen(): void {
+  if (!_origOpen) return;
+  try { (window as any).open = _origOpen; } catch (_) { }
+  _origOpen = null;
+  for (var i = popups.length - 1; i >= 0; i--) cleanupPopup(popups[i]);
+  popups.length = 0;
+}
+
+function trackPopup(w: Window | null, url: any): void {
+  if (!w) return;
+  var u = String(url === undefined || url === null ? '' : url);
+  trackPopupWin(w, 'open url=' + u.slice(0, 140));
+}
+
+function trackPopupWin(w: Window | null, src: string): void {
+  if (!w || w === window) return;
+  for (var i = 0; i < popups.length; i++) if (popups[i].win === w) return;
+  try { if (w.closed) return; } catch (_) { return; }
+  console.log('[LUMA_INJECT] popup tracked (' + src + ') name=' +
+    (function () { try { return w.name || '-'; } catch (_) { return '?'; } })());
+  var entry: PopupEntry = { win: w, doc: null, obs: null, timer: null };
+  popups.push(entry);
+  pollPopup(entry);
+  entry.timer = setInterval(function () { pollPopup(entry); }, 500);
+}
+
+function cleanupPopup(entry: PopupEntry): void {
+  try {
+    if (entry.timer) clearInterval(entry.timer);
+    if (entry.obs) entry.obs.disconnect();
+  } catch (_) { }
+  entry.timer = null;
+  entry.obs = null;
+  var idx = popups.indexOf(entry);
+  if (idx !== -1) popups.splice(idx, 1);
+}
+
+function pollPopup(entry: PopupEntry): void {
+  try {
+    if (entry.win.closed) { cleanupPopup(entry); return; }
+    var d: Document | null = null;
+    try { d = entry.win.document; } catch (_) { return; } // unreachable → not ours
+    if (!d) return;
+    if (d !== entry.doc) {
+      // New/replaced document (document.write on reuse): rebind.
+      if (entry.obs) { entry.obs.disconnect(); entry.obs = null; }
+      entry.doc = d;
+      d.addEventListener('contextmenu', onContextMenu, true);
+      d.addEventListener('mouseover', onMouseOver, true);
+      d.addEventListener('click', onClickCapture, true);
+      console.log('[LUMA_INJECT] popup doc bound (popupTarget=' +
+        (d.getElementById('popup_target') ? 'Y' : 'N') + ' title=' +
+        JSON.stringify(d.title) + ')');
+    }
+    if (!entry.obs && d.getElementById('popup_target')) {
+      var root = d.body || d.getElementById('popup_target');
+      entry.obs = new MutationObserver(function () { scanMenus(d); });
+      entry.obs.observe(root, { childList: true, subtree: true });
+      scanMenus(d);
+    }
+  } catch (_) { }
+}
+
+// Scan this document plus every reachable popup document.
+function scanAll(): void {
+  scanMenus(document);
+  for (var i = 0; i < popups.length; i++) {
+    if (popups[i].doc) scanMenus(popups[i].doc as Document);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -109,13 +312,21 @@ function setContextApp(id: string | null): void {
 function onContextMenu(e: MouseEvent): void {
   try {
     manageHoverAt = 0;
+    interactAt = Date.now();
+    // The event may fire in a popup document (bound via trackPopup).
+    var doc = ((e.target as any) && (e.target as any).ownerDocument) || document;
     var id = appIdFromNode(e.target);
-    if (!id) {
-      var under = document.elementFromPoint(e.clientX, e.clientY);
+    if (!id && doc.elementFromPoint) {
+      var under = doc.elementFromPoint(e.clientX, e.clientY);
       if (under && under !== e.target) id = appIdFromNode(under);
     }
     if (!id) id = lastHoverAppId;
     setContextApp(id);
+    // Diagnostic: are the menus even in THIS document? If visible=0 here but
+    // the user sees a context menu, Steam opened it in a separate popup
+    // window and we must bind there instead.
+    console.log('[LUMA_INJECT] Manage menu contextmenu appid=' + (id || 'null') +
+      ' ' + menuDump(doc) + ' docTitle=' + JSON.stringify(doc.title));
   } catch (_) { }
 }
 
@@ -123,12 +334,17 @@ function onMouseOver(e: MouseEvent): void {
   try {
     var t: any = e.target;
     if (!t || t.nodeType !== 1) return;
+    interactAt = Date.now();
     var id = appIdFromNode(t);
     if (id) lastHoverAppId = id;
     // Remember when the pointer sits on the "Manage" entry: the submenu that
-    // opens right after is the one we inject into.
-    var item = t.closest ? t.closest('.contextMenuItem') : null;
+    // opens right after is the one we inject into. Class-agnostic: hashed
+    // class names differ between PCs, so also match role=menuitem /
+    // aria-haspopup and raw text.
+    var item = t.closest ? (t.closest('.contextMenuItem') ||
+      t.closest('[role="menuitem"]') || t.closest('[aria-haspopup]')) : null;
     if (item && (item.textContent || '').trim() === 'Manage') manageHoverAt = Date.now();
+    else if (!item && (t.textContent || '').trim() === 'Manage') manageHoverAt = Date.now();
   } catch (_) { }
 }
 
@@ -136,10 +352,74 @@ function onClickCapture(e: MouseEvent): void {
   try {
     var t: any = e.target;
     if (!t || !t.closest) return;
-    if (!t.closest('[aria-label="Manage"]')) return;
+    var manage = t.closest('[aria-label="Manage"]');
+    // Class-agnostic trigger: a menuitem whose text is exactly "Manage" (the
+    // popup menu, not the details-page button which carries aria-label).
+    var mi = t.closest('[role="menuitem"]') || t.closest('.contextMenuItem');
+    if (!manage && mi && (mi.textContent || '').trim() === 'Manage') manage = mi;
+    if (!manage) return;
+    interactAt = Date.now();
     var id = appIdFromNode(t) || lastHoverAppId;
     setContextApp(id);
+    // Diagnostic: this is the trigger that actually fires (the contextmenu
+    // log never appears — Steam swallows that event before our capture
+    // listener). Sweep the popup manager first so the dump reflects the
+    // popups that exist right now, then dump every reachable document.
+    sweepManagers();
+    var mgrPopups = -1;
+    var mgrs = popupManagers();
+    if (mgrs.length) {
+      try {
+        var n = 0; var it = mgrs[0].GetPopups(); var s;
+        while (!(s = it.next()).done) n++;
+        mgrPopups = n;
+      } catch (_) { }
+    }
+    var out = 'click-on-Manage appid=' + (id || 'null') +
+      ' opener=' + (window.opener ? 'Y' : 'N') +
+      ' gMgr=' + (hasMgr(window) ? 'Y' : 'N') + '/' +
+      (window.opener && hasMgr(window.opener) ? 'Y' : 'N') +
+      ' mgrPopups=' + mgrPopups + ' tracked=' + popups.length +
+      ' main{' + menuDump(document) + '}';
+    for (var p = 0; p < popups.length; p++) {
+      var pd = popups[p].doc;
+      out += ' popup#' + p + (pd ? '{' + menuDump(pd) + '}' : '{unreachable}');
+    }
+    console.log('[LUMA_INJECT] Manage menu ' + out);
   } catch (_) { }
+}
+
+// Where are the .contextMenu elements right now? One line: counts in
+// #popup_target vs whole document + identity of the first one found.
+function menuDump(doc: Document): string {
+  try {
+    var pt = doc.getElementById('popup_target');
+    var inPt = pt ? pt.querySelectorAll('.contextMenu').length : -1;
+    var visInPt = pt ? pt.querySelectorAll('.contextMenu.visible').length : -1;
+    var inDoc = doc.querySelectorAll('.contextMenu').length;
+    var visDoc = doc.querySelectorAll('.contextMenu.visible').length;
+    var first = doc.querySelector('.contextMenu');
+    var where = 'none';
+    if (first) {
+      var p = first.parentElement;
+      where = (first.getAttribute('class') || '').slice(0, 60) +
+        ' in <' + (p ? (p.tagName.toLowerCase() + (p.id ? '#' + p.id : '') +
+          ' id=' + (p.id ? 'Y' : 'N') +
+          ' parent=' + (p.parentElement ? p.parentElement.tagName.toLowerCase() +
+            (p.parentElement.id ? '#' + p.parentElement.id : '') : 'none')) : 'none') + '>';
+    }
+    // Class-agnostic census too: role=menu / menuitem counts catch menus
+    // whose class names we cannot predict on the other PC.
+    var roleMenus = doc.querySelectorAll('[role="menu"]').length;
+    var roleItems = doc.querySelectorAll('[role="menuitem"]').length;
+    return 'popupTarget=' + (pt ? 'Y' : 'N') +
+      ' ptChildren=' + (pt ? pt.childElementCount : -1) +
+      ' inPopupTarget=' + inPt + '/' + visInPt +
+      ' inDocument=' + inDoc + '/' + visDoc +
+      ' roleMenu=' + roleMenus + ' roleMenuItem=' + roleItems +
+      ' first=' + where;
+  } catch (_) { }
+  return 'menuDump unavailable';
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +429,7 @@ function prefetchMenuData(appId: string): void {
   if (menuData && menuData.appId === appId && menuData.ready) return;
   var seq = ++dataSeq;
   menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: false };
+  console.log('[LUMA_INJECT] Manage menu prefetch appid=' + appId);
 
   fetch(luaFilesUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
     .then(function (r) { return r.ok ? r.json() : null; })
@@ -161,7 +442,8 @@ function prefetchMenuData(appId: string): void {
       }
       if (!hasLua) {
         menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: true };
-        scanMenus();
+        console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId + ' lua=false');
+        scanAll();
         return;
       }
       fetch(steamKeysPinsUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
@@ -176,18 +458,22 @@ function prefetchMenuData(appId: string): void {
             installed: !!(pin && pin.installed),
             ready: true
           };
-          scanMenus();
+          console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId +
+            ' lua=true pins=' + menuData.hasPins + ' installed=' + menuData.installed);
+          scanAll();
         })
         .catch(function () {
           if (seq !== dataSeq) return;
           menuData = { appId: appId, hasLua: true, hasPins: false, installed: false, ready: true };
-          scanMenus();
+          console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId + ' lua=true pins=false (pins fetch failed)');
+          scanAll();
         });
     })
     .catch(function () {
       if (seq !== dataSeq) return;
       menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: true };
-      scanMenus();
+      console.log('[LUMA_INJECT] Manage menu data ready appid=' + appId + ' lua=false (lua fetch failed)');
+      scanAll();
     });
 }
 
@@ -197,50 +483,242 @@ function prefetchMenuData(appId: string): void {
 function ensurePopupObs(): void {
   if (!bound) return;
   try {
-    var pt = document.getElementById('popup_target');
-    if (!pt) return;
-    if (obsTarget === pt && popupObs) return;
+    // Observe the whole body: on some PCs the menu is not rendered inside
+    // #popup_target (see scanMenus fallback), so watching only that node
+    // would never fire a scan.
+    var root = document.body || document.getElementById('popup_target');
+    if (!root) return;
+    if (obsTarget === root && popupObs) return;
     if (popupObs) popupObs.disconnect();
-    obsTarget = pt;
-    popupObs = new MutationObserver(function () { scanMenus(); });
-    popupObs.observe(pt, { childList: true, subtree: true });
+    obsTarget = root;
+    popupObs = new MutationObserver(function () { scanAll(); });
+    popupObs.observe(root, { childList: true, subtree: true });
   } catch (_) { }
 }
 
-function scanMenus(): void {
+function scanSkip(reason: string): void {
+  if (reason === _lastScanSkip) return;
+  _lastScanSkip = reason;
+  console.log('[LUMA_INJECT] Manage menu scan skipped: ' + reason);
+}
+
+function scanMenus(doc?: Document): void {
+  var d: Document = doc || document;
   try {
-    var d = menuData;
-    if (!d || !d.ready || !ctxAppId || d.appId !== ctxAppId) return;
-    var pt = document.getElementById('popup_target');
-    if (!pt) return;
-    var menus = pt.querySelectorAll('.contextMenu.visible');
-    for (var i = 0; i < menus.length; i++) {
-      if (isManageMenu(menus[i])) ensureItems(menus[i]);
+    var md = menuData;
+    if (!md || !md.ready) { scanSkip('no menuData (ready=' + !!(md && md.ready) + ')'); return; }
+    if (!ctxAppId) { scanSkip('no ctxAppId'); return; }
+    if (md.appId !== ctxAppId) { scanSkip('menuData appid ' + md.appId + ' != ctxAppId ' + ctxAppId); return; }
+    var pt = d.getElementById('popup_target');
+    var root: Element | null = pt || d.body;
+    if (!root) { scanSkip('no #popup_target and no body in doc(' + d.title + ')'); return; }
+    var injected = false;
+    var via = '';
+
+    // Fast path: class selectors (known-good on the PC where Steam appends
+    // the readable "contextMenu" literal to the hashed class).
+    var menus = root.querySelectorAll('.contextMenu.visible');
+    for (var i = 0; i < menus.length && !injected; i++) {
+      if (isManageMenu(d, menus[i])) { injected = true; via = 'visible-in-root'; ensureItems(d, menus[i], null); }
     }
-  } catch (_) { }
+    if (!injected && !menus.length) {
+      var anywhere = d.querySelectorAll('.contextMenu.visible');
+      for (var j = 0; j < anywhere.length && !injected; j++) {
+        if (isManageMenu(d, anywhere[j])) { injected = true; via = 'visible-in-doc'; ensureItems(d, anywhere[j], null); }
+      }
+      if (!injected) {
+        var allMenus = d.querySelectorAll('.contextMenu');
+        for (var k = 0; k < allMenus.length && !injected; k++) {
+          var m = allMenus[k];
+          if (m.classList.contains('visible')) continue;
+          if (isManageMenu(d, m)) { injected = true; via = 'no-visible-class'; ensureItems(d, m, null); }
+        }
+      }
+    }
+    if (injected) {
+      _lastScanSkip = '';
+      console.log('[LUMA_INJECT] Manage menu class path OK (via=' + via + '): ' + menuDump(d));
+      return;
+    }
+
+    // Heavy class-agnostic paths need recent pointer activity — they walk
+    // the whole document (the menu may live in a popup we cannot query by
+    // class). Idle observers must not pay that cost.
+    if (Date.now() - interactAt > 6000) {
+      scanSkip('class paths empty; no recent interaction (doc=' + JSON.stringify(d.title) + ')');
+      return;
+    }
+
+    // Primary class-agnostic path: exact-text rows. "Browse local files" and
+    // "Uninstall" only exist inside the Manage submenu, on any PC, whatever
+    // the hashed classes are. The climb stops at the smallest ancestor that
+    // holds both entries (the contents container); the row we matched is the
+    // proto to clone.
+    var rowHit = findRowContents(d);
+    if (rowHit) {
+      ensureItems(d, rowHit.contents, rowHit.proto);
+      _lastScanSkip = '';
+      console.log('[LUMA_INJECT] Manage menu row path OK (proto=' +
+        JSON.stringify((rowHit.proto.textContent || '').trim().slice(0, 40)) +
+        ' contents=' + JSON.stringify((rowHit.contents.getAttribute('class') || rowHit.contents.tagName).slice(0, 60)) +
+        ') ' + menuDump(d));
+      return;
+    }
+
+    // Aria path: the "Manage" trigger row carries aria-controls/aria-haspopup
+    // pointing at its submenu — decisive for games that are not installed
+    // (no "Browse local files" row exists there).
+    if (tryAriaPath(d)) {
+      _lastScanSkip = '';
+      console.log('[LUMA_INJECT] Manage menu aria path OK: ' + menuDump(d));
+      return;
+    }
+
+    // role=menu candidates (Steam uses the role on some menu components).
+    var roleMenus = d.querySelectorAll('[role="menu"]');
+    var roleHit = false;
+    for (var r = 0; r < roleMenus.length && !roleHit; r++) {
+      if (isManageMenu(d, roleMenus[r])) { roleHit = true; ensureItems(d, roleMenus[r], null); }
+    }
+    if (roleHit) {
+      _lastScanSkip = '';
+      console.log('[LUMA_INJECT] Manage menu role=menu path OK: ' + menuDump(d));
+      return;
+    }
+
+    // Last resort: smallest VISIBLE div whose whole text is just the two
+    // submenu entries — never a large panel (the store search FilterBucket
+    // panel used to match the old unguarded sweep and ate the injection).
+    var best: HTMLElement | null = null;
+    var bestLen = 1e9;
+    var divs = d.querySelectorAll('div');
+    for (var c = 0; c < divs.length; c++) {
+      var el = divs[c] as HTMLElement;
+      if (el.querySelector('[role="menu"]')) continue;
+      var t = el.textContent || '';
+      if (t.length >= 400) continue;
+      if (t.indexOf('Browse local files') === -1 || t.indexOf('Uninstall') === -1) continue;
+      if (!isVisibleEl(el)) continue;
+      if (t.length < bestLen) { best = el; bestLen = t.length; }
+    }
+    if (best) {
+      ensureItems(d, best, null);
+      _lastScanSkip = '';
+      console.log('[LUMA_INJECT] Manage menu guarded sweep OK (' + bestLen +
+        ' chars): ' + menuDump(d));
+      return;
+    }
+
+    scanSkip('no Manage menu in doc(' + JSON.stringify(d.title) + '); ' + menuDump(d));
+  } catch (e) {
+    console.warn('[LUMA_INJECT] Manage menu scan error:', e);
+  }
 }
 
-function isManageMenu(menu: Element): boolean {
+// Exact-text row search → { contents, proto }. Installed games always render
+// "Browse local files" inside the Manage submenu; the strings are unique in
+// the document (they come from #GameAction_BrowseLocalFiles / Uninstall and
+// only the submenu shows them together).
+function findRowContents(d: Document): { contents: HTMLElement; proto: HTMLElement } | null {
+  var cands = d.querySelectorAll('div,li,span,button,[role="menuitem"]');
+  var proto: HTMLElement | null = null;
+  for (var i = 0; i < cands.length; i++) {
+    var el = cands[i] as HTMLElement;
+    if (el.children.length > 3) continue;
+    var t = (el.textContent || '').trim();
+    if (t !== 'Browse local files' && t !== 'Uninstall') continue;
+    if (!isVisibleEl(el)) continue;
+    if (t === 'Browse local files') { proto = el; break; }
+    if (!proto) proto = el;
+  }
+  if (!proto) return null;
+  // Climb to the smallest ancestor holding BOTH entries = the contents box.
+  var cur: HTMLElement | null = proto;
+  var guard = 0;
+  while (cur && guard++ < 6) {
+    var p = cur.parentElement as HTMLElement | null;
+    if (!p) return null;
+    var pt = p.textContent || '';
+    if (pt.indexOf('Browse local files') !== -1 && pt.indexOf('Uninstall') !== -1 &&
+      p.childElementCount >= 2 && isVisibleEl(p)) {
+      return { contents: p, proto: cur };
+    }
+    cur = p;
+  }
+  return null;
+}
+
+// aria-controls/aria-haspopup on the "Manage" trigger → submenu container.
+function tryAriaPath(d: Document): boolean {
+  var els = d.querySelectorAll('[aria-haspopup], [aria-controls]');
+  for (var i = 0; i < els.length; i++) {
+    var el = els[i] as HTMLElement;
+    var t = (el.getAttribute('aria-label') || el.textContent || '').trim();
+    if (t !== 'Manage') continue;
+    var cid = el.getAttribute('aria-controls');
+    var target = cid ? d.getElementById(cid) : null;
+    if (!target || !isVisibleEl(target)) continue;
+    var contents = resolveContents(d, target);
+    if (contents) { ensureItems(d, contents, null); return true; }
+  }
+  return false;
+}
+
+function isManageMenu(d: Document, menu: Element): boolean {
+  if (!isVisibleEl(menu)) return false;
   var t = menu.textContent || '';
   // Installed games: Steam renders both of these only inside the Manage submenu.
   if (t.indexOf('Browse local files') !== -1 && t.indexOf('Uninstall') !== -1) return true;
   // Not installed: neither entry exists, so identify the submenu by its
-  // aria-labelledby → hidden "Manage" label when Steam provides it.
-  var contents = menu.querySelector('.contextMenuContents');
-  var lb = contents && contents.getAttribute('aria-labelledby');
+  // aria-labelledby → hidden "Manage" label. Class-agnostic: look for any
+  // [aria-labelledby] descendant (hashed classes on the other PC).
+  var contents = menu.querySelector('.contextMenuContents') ||
+    menu.querySelector('[aria-labelledby]');
+  var lb = contents && (contents.getAttribute('aria-labelledby') ||
+    (menu.getAttribute && menu.getAttribute('aria-labelledby')));
   if (lb) {
-    var lbl = document.getElementById(lb);
+    var lbl = d.getElementById(lb) || menu.ownerDocument.getElementById(lb);
     if (lbl && (lbl.textContent || '').trim() === 'Manage') return true;
   }
-  // Last resort: right after hovering "Manage", any visible submenu that is
-  // not itself a menu listing "Manage" (the root menu does) is the target.
+  // Last resort: right after hovering "Manage", any SMALL visible menu that
+  // is not itself a menu listing "Manage" (the root menu does) is the target.
+  // The size cap keeps large panels (store search filter buckets, details
+  // panels) from matching — that was the false positive on the other PC.
   if (Date.now() - manageHoverAt > 2000) return false;
-  var items = menu.querySelectorAll('.contextMenuItem');
+  if (t.length >= 400) return false;
+  var items = menu.querySelectorAll('.contextMenuItem, [role="menuitem"]');
   if (!items.length) return false;
   for (var i = 0; i < items.length; i++) {
     if ((items[i].textContent || '').trim() === 'Manage') return false;
   }
   return true;
+}
+
+// Resolve the item container from a menu/contents/submenu-root candidate:
+// known class, aria-labelledby → "Manage", role=menuitem children, or a
+// box of several short rows.
+function resolveContents(d: Document, menu: Element): HTMLElement | null {
+  var byClass = menu.querySelector('.contextMenuContents');
+  if (byClass) return byClass as HTMLElement;
+  var lbSelf = menu.getAttribute && menu.getAttribute('aria-labelledby');
+  if (lbSelf) {
+    var l0 = d.getElementById(lbSelf);
+    if (l0 && (l0.textContent || '').trim() === 'Manage') return menu as HTMLElement;
+  }
+  var byLb = menu.querySelector('[aria-labelledby]');
+  if (byLb) {
+    var lb2 = byLb.getAttribute('aria-labelledby');
+    var l1 = lb2 ? d.getElementById(lb2) : null;
+    if (l1 && (l1.textContent || '').trim() === 'Manage') return byLb as HTMLElement;
+  }
+  if (menu.querySelector('[role="menuitem"]')) return menu as HTMLElement;
+  var kids = menu.children;
+  var shortRows = 0;
+  for (var i = 0; i < kids.length; i++) {
+    if ((kids[i].textContent || '').trim().length < 60) shortRows++;
+  }
+  if (shortRows >= 2) return menu as HTMLElement;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -270,13 +748,19 @@ var ACTION_LABELS: Record<string, string> = {
   'delete': 'Delete Lua…'
 };
 
-function ensureItems(menu: Element): void {
-  var d = menuData;
-  if (!d || !d.ready || !ctxAppId || d.appId !== ctxAppId) return;
-  var contents = menu.querySelector('.contextMenuContents') as HTMLElement | null;
-  if (!contents) return;
+function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null): void {
+  var md = menuData;
+  if (!md || !md.ready || !ctxAppId || md.appId !== ctxAppId) return;
+  // Contents container: known class, aria-labelledby → Manage, then
+  // structural fallbacks (row path passes the container directly).
+  var contents = resolveContents(d, menu);
+  if (!contents) {
+    scanSkip('Manage submenu has no contents container (role menuitem=' +
+      menu.querySelectorAll('[role="menuitem"]').length + ')');
+    return;
+  }
 
-  var desired = desiredActions(d);
+  var desired = desiredActions(md);
   var existing = Array.prototype.slice.call(
     contents.querySelectorAll('[data-luma-manage]')) as HTMLElement[];
   var same = existing.length === desired.length;
@@ -288,28 +772,48 @@ function ensureItems(menu: Element): void {
   if (same) return;
   for (var j = 0; j < existing.length; j++) existing[j].remove();
 
-  var proto = contents.querySelector('.contextMenuItem:not(.SubMenu)') as HTMLElement | null;
+  // Proto row to clone: the row path hands us the exact matching row
+  // (perfect styling without knowing any hashed class); otherwise hashed
+  // classes first (known-good on this PC), then role=menuitem, then any
+  // direct child row.
+  var proto = (protoHint || null) as HTMLElement | null;
+  if (!proto) proto = contents.querySelector('.contextMenuItem:not(.SubMenu)') as HTMLElement | null;
   if (!proto) proto = contents.querySelector('.contextMenuItem') as HTMLElement | null;
+  if (!proto) proto = contents.querySelector('[role="menuitem"]') as HTMLElement | null;
+  if (!proto) proto = contents.firstElementChild as HTMLElement | null;
   var protoClass = proto ? proto.className : 'contextMenuItem';
   var protoLabelClass = (proto && proto.firstElementChild && proto.firstElementChild.children.length === 0)
     ? (proto.firstElementChild as HTMLElement).className : '';
 
   // Insert before the last separator so Uninstall stays the final entry.
   var anchor: Element | null = null;
-  var seps = contents.querySelectorAll('.ContextMenuSeparator');
+  var seps = contents.querySelectorAll('.ContextMenuSeparator, [role="separator"], [aria-hidden="true"]');
   for (var i = seps.length - 1; i >= 0; i--) {
     if (seps[i].parentElement === contents) { anchor = seps[i]; break; }
   }
+  if (!anchor) {
+    // No known separator class: insert before the row whose text is
+    // "Uninstall" (the menu's stable last entry).
+    var rows = contents.children;
+    for (var q = rows.length - 1; q >= 0; q--) {
+      if ((rows[q].textContent || '').trim() === 'Uninstall') { anchor = rows[q]; break; }
+    }
+  }
 
-  var frag = document.createDocumentFragment();
+  var frag = d.createDocumentFragment();
   for (var a = 0; a < desired.length; a++) {
-    frag.appendChild(makeItem(proto, protoClass, protoLabelClass, ACTION_LABELS[desired[a]], desired[a]));
+    frag.appendChild(makeItem(d, proto, protoClass, protoLabelClass, ACTION_LABELS[desired[a]], desired[a]));
   }
   if (anchor) contents.insertBefore(frag, anchor);
   else contents.appendChild(frag);
+  console.log('[LUMA_INJECT] Manage menu items injected: ' + desired.join(',') +
+    ' appid=' + ctxAppId + ' anchor=' + (anchor ? 'separator' : 'end') +
+    ' proto=' + (proto ? JSON.stringify(protoClass.slice(0, 60)) : 'none') +
+    ' contents=' + JSON.stringify((contents.getAttribute('class') || contents.tagName).slice(0, 60)));
 }
 
 function makeItem(
+  d: Document,
   proto: HTMLElement | null,
   protoClass: string,
   protoLabelClass: string,
@@ -321,7 +825,7 @@ function makeItem(
     item = proto.cloneNode(false) as HTMLElement;
     while (item.firstChild) item.removeChild(item.firstChild);
   } else {
-    item = document.createElement('div');
+    item = d.createElement('div');
     item.className = protoClass;
   }
   item.removeAttribute('id');
@@ -333,7 +837,7 @@ function makeItem(
   item.setAttribute('data-luma-manage', action);
   item.style.cursor = 'pointer';
   if (protoLabelClass) {
-    var lbl = document.createElement('div');
+    var lbl = d.createElement('div');
     lbl.className = protoLabelClass;
     lbl.textContent = label;
     item.appendChild(lbl);
@@ -368,7 +872,10 @@ function closeMenu(menu: Element | null): void {
 function handleAction(action: string, item: HTMLElement): void {
   var appId = ctxAppId;
   if (!appId) return;
-  var menu = item.closest('.contextMenu') as Element | null;
+  // Class-agnostic: hashed .contextMenu won't exist on the other PC; the
+  // item itself (role=menuitem) bubbles the Escape just as well.
+  var menu = (item.closest('.contextMenu') || item.closest('[role="menu"]') ||
+    item) as Element | null;
 
   if (action === 'fixes') {
     closeMenu(menu);
