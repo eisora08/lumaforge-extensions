@@ -2640,7 +2640,7 @@ export function openSidebar(initialTab?: string) {
   var tabsHtml = '<div class="luma-sidebar-tabs" style="display:flex;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(0,0,0,.1);padding:0 4px;overflow-x:auto;scrollbar-width:none;">';
   for (var i = 0; i < TABS.length; i++) {
     var tab = TABS[i];
-    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px 2px;text-align:center;font-size:10px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + t(tab.label) + '</button>';
+    tabsHtml += '<button class="luma-sidebar-tab' + (tab.id === state.currentTab ? ' active' : '') + '" data-tab="' + tab.id + '" style="flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:10px 1px;text-align:center;font-size:9px;font-weight:600;color:#8f98a0;border:none;background:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .15s ease;">' + t(tab.label) + '</button>';
   }
   tabsHtml += '</div>';
 
