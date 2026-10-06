@@ -227,6 +227,20 @@ function clearInlineThemeVars(root: HTMLElement): void {
   } catch (e) { }
 }
 
+// True only while the proxy actually injected a theme payload: it writes
+// `--luma-theme-active:1` alongside the payload (and strips it on
+// clear_theme_state). Without a theme there is nothing to adopt — the dark
+// values scanThemeSurface()/bodySurface() find in library/popup windows are
+// Steam's own chrome (--main-top-image-bg, body{background:#000}), not ours,
+// and inlining them turns the navy #1b2838 panel black. The store document
+// never loads steamui CSS so its scan fails "by luck"; gate explicitly instead.
+function themeActive(): boolean {
+  try {
+    return getComputedStyle(document.documentElement)
+      .getPropertyValue('--luma-theme-active').trim() === '1';
+  } catch (e) { return false; }
+}
+
 // Resolve the active theme's colors and apply them as inline :root custom
 // properties. Safe to call repeatedly (theme-reload event, activation).
 export function resolveThemeColors(): void {
@@ -260,11 +274,13 @@ export function resolveThemeColors(): void {
     }
 
     // Panel background: adopt the theme's base surface so the panel matches
-    // the active theme instead of the hardcoded navy gradient. Resolution in
-    // tiers — standard variables (fluenty), then the theme's own :root
-    // palette (Minimal-Dark, Adwaita...), then the body's computed
-    // background. Only dark surfaces apply (light panels would clash with
-    // dark card/text defaults).
+    // the active theme instead of the hardcoded navy gradient. Only while a
+    // theme payload is actually injected (themeActive). Resolution in tiers —
+    // standard variables (fluenty), then the theme's own :root palette
+    // (Minimal-Dark, Adwaita...), then the body's computed background. Only
+    // dark surfaces apply (light panels would clash with dark card/text
+    // defaults).
+    if (!themeActive()) return;
     var surface = firstColorVarBoth(SURFACE_CANDIDATES) || scanThemeSurface() || bodySurface();
     if (surface && luminance(surface) < 0.5) {
       set('--luma-ssh-bg-panel', rgba(surface, 1));
