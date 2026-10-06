@@ -75,6 +75,12 @@ export function activate(): void {
     if (isLibrarySurface()) startManageMenu();
     ensureLumaButtonExists();
     ensureSettingsButton();
+    console.log('[LUMA_RUNTIME] librarySurface=' + isLibrarySurface() +
+      ' gear=' + !!document.getElementById('luma-ssh-settings-btn') +
+      ' hasRoot=' + !!document.getElementById('root') +
+      ' hasPopupTarget=' + !!document.getElementById('popup_target') +
+      ' title=' + JSON.stringify(document.title) +
+      ' bodyClass=' + (document.body ? document.body.className : 'n/a'));
     detectBridgePort();
     syncNamespaceState();
     // Sync this origin's local download history to the bridge queue file so

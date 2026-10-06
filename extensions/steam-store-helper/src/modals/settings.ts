@@ -15,34 +15,75 @@ var _settingsBtnHasDownloads = false;
 // steamloopback origin and run this script too — popups must stay clean, and
 // so do the splash/tracking windows (about:blank, data:, 1x1 SharedJSContext).
 //
-// Positive detection: the real Steam window mounts a FocusNavigationRoot
-// inside #popup_target — menus/supernavs do not (verified live: only the
-// main window has it). #library alone is NOT reliable: current Steam builds
-// never create an element with that id (it only appears when a theme's
-// sidebar happens to define one), so it can't be the primary signal.
-function isTransientSurface(): boolean {
+// Theme-independent: inject on every steamloopback document except the
+// surfaces we can positively exclude (context menu popups, gamepad ui, tiny
+// windows). Earlier positive signals were broken — #library only exists with
+// the fluenty theme, #root does not exist in the real library window, and
+// [class*="FocusNavigationRoot"] never matches Steam's hashed CSS-module
+// classes. The inject log carries a document identity dump so we can see
+// exactly which surfaces got the gear and tighten from evidence.
+// Returns '' when the surface is real, otherwise the reason it is skipped.
+function transientReason(): string {
   try {
     var body = document.body;
-    if (!body) return true;
+    if (!body) return 'no body';
     var cls = body.className || '';
-    if (cls.indexOf('ContextMenuPopupBody') !== -1) return true;
-    if (cls.indexOf('GamepadUI') !== -1) return true;
-    if (window.innerWidth < 480 || window.innerHeight < 400) return true;
+    if (cls.indexOf('ContextMenuPopupBody') !== -1) return 'context menu popup';
+    if (cls.indexOf('GamepadUI') !== -1) return 'gamepad ui';
+    if (window.innerWidth < 480 || window.innerHeight < 400) return 'tiny window ' + window.innerWidth + 'x' + window.innerHeight;
+    // Login / Steam Guard surface: the SPA never changes the pathname (Steam
+    // uses replaceState without a URL), so the only reliable signal is the
+    // password field the sign-in form (and the PIN prompt) render. The check
+    // runs before the hostname gate so it also covers the login window on
+    // steamloopback; by the time the library mounts, the field is gone and
+    // reconcile() injects the gear. Modal password fields in the library
+    // cannot remove an existing gear — the id check above returns first.
+    if (document.querySelector('input[type="password"]')) return 'login form (password input)';
     var host = location.hostname;
-    if (host === 'store.steampowered.com') return false;
-    if (host === 'steamloopback.host') {
-      if (document.getElementById('library')) return false;
-      return !document.querySelector('#popup_target [class*="FocusNavigationRoot"]');
-    }
-    return true;
+    if (host === 'store.steampowered.com') return '';
+    if (host === 'steamloopback.host') return '';
+    return 'origin ' + (host || location.protocol);
   } catch (_) { }
-  return false;
+  return '';
 }
+
+// One-line identity dump of the document we just injected into — used to
+// find which surfaces get the gear unnecessarily.
+function docIdentity(): string {
+  try {
+    var b = document.body;
+    var first = b && b.firstElementChild;
+    var desc = first
+      ? first.tagName.toLowerCase() + (first.id ? '#' + first.id : '') +
+        (first.className && typeof first.className === 'string'
+          ? '.' + first.className.split(/\s+/).slice(0, 3).join('.') : '')
+      : 'none';
+    return 'title=' + JSON.stringify(document.title) +
+      ' path=' + location.pathname + location.hash +
+      ' query=' + (location.search || '-').slice(0, 40) +
+      ' bodyChildren=' + (b ? b.childElementCount : 0) +
+      ' firstChild=' + desc +
+      ' popupTarget=' + (document.getElementById('popup_target') ? 'Y' : 'N') +
+      ' size=' + window.innerWidth + 'x' + window.innerHeight;
+  } catch (_) { }
+  return 'identity unavailable';
+}
+
+var _lastGearSkip = '';
 
 export function ensureSettingsButton(): void {
   try {
     if (document.getElementById(SETTINGS_BTN_ID)) return;
-    if (isTransientSurface()) return;
+    var reason = transientReason();
+    if (reason) {
+      if (reason !== _lastGearSkip) {
+        _lastGearSkip = reason;
+        console.log('[LUMA_INJECT] Floating settings button skipped: ' + reason +
+          ' [doc] ' + docIdentity());
+      }
+      return;
+    }
+    _lastGearSkip = '';
 
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -81,7 +122,9 @@ export function ensureSettingsButton(): void {
     });
 
     (document.body || document.documentElement).appendChild(btn);
-    console.log('[LUMA_INJECT] Floating settings button injected');
+    console.log('[LUMA_INJECT] Floating settings button injected (surface=' +
+      (location.hostname === 'store.steampowered.com' ? 'store' : 'library') +
+      ', url=' + location.href + ') [doc] ' + docIdentity());
 
     // Start reactive icon update timer
     startSettingsBtnTimer();
