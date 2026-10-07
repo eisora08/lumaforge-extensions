@@ -428,7 +428,7 @@ export function renderSettingsProviders(container: HTMLElement, providers: any[]
         .catch(function(err) {
           (btn as HTMLButtonElement).textContent = t('Test');
           (btn as HTMLButtonElement).disabled = false;
-          statusEl.textContent = '\u2717 Error: ' + (err.message || err);
+          statusEl.textContent = '\u2717 ' + t('Error') + ': ' + (err.message || err);
           statusEl.style.color = '#e74c3c';
         });
     });

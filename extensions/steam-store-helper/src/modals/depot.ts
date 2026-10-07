@@ -180,7 +180,7 @@ export function fetchDepotsForModal(appId: string): void {
         '<div style="' + ST.errorTitle + '">' + (isNotInstalled ? t('DepotDownloaderMod Not Installed') : isNoKeys ? t('No Depot Keys Found') : t('Failed to Resolve Depots')) + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
-        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
+        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">' + t('TRY AGAIN') + '</button>' +
         '</div>' +
         '</div>';
 
@@ -254,8 +254,8 @@ export function renderDepotList(appId: string): void {
       s += '<div style="' + ST.depotName + '">' + escapeHtml(depot.name || 'Depot ' + depot.depotId) + '</div>';
       var detailParts: string[] = [];
       if (depot.dlcAppId) detailParts.push('DLC ' + depot.dlcAppId);
-      if (!hasManifest) detailParts.push('No manifest');
-      if (!hasKey) detailParts.push('No key');
+      if (!hasManifest) detailParts.push(t('No manifest'));
+      if (!hasKey) detailParts.push(t('No key'));
       if (detailParts.length > 0) {
         s += '<div style="' + ST.depotDetail + '">' + escapeHtml(detailParts.join(' \u00b7 ')) + '</div>';
       }
@@ -292,7 +292,7 @@ export function renderDepotList(appId: string): void {
   // Total bar
   html += '<div style="' + ST.depotTotal + '">';
   html += '<span><strong>' + totalSelected + '</strong> depot' + (totalSelected !== 1 ? 's' : '') + ' selected \u00b7 <strong>' + formatBytes(totalSize) + '</strong></span>';
-  html += '<button type="button" id="luma-depot-start" style="' + ST.primaryBtn + (totalSelected === 0 ? 'opacity:.5;pointer-events:none;' : '') + '">' + svgDownload() + '<span>START DOWNLOAD</span></button>';
+  html += '<button type="button" id="luma-depot-start" style="' + ST.primaryBtn + (totalSelected === 0 ? 'opacity:.5;pointer-events:none;' : '') + '">' + svgDownload() + '<span>' + t('START DOWNLOAD') + '</span></button>';
   html += '</div>';
 
   body.innerHTML = html;
@@ -404,8 +404,8 @@ export function startDepotDownload(appId: string): void {
         '<div style="' + ST.errorTitle + '">' + t('Download Failed to Start') + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
-        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
-        '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">CLOSE</button>' +
+        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">' + t('TRY AGAIN') + '</button>' +
+        '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">' + t('CLOSE') + '</button>' +
         '</div>' +
         '</div>';
 

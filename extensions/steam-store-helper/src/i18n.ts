@@ -235,4 +235,162 @@ const ES: Record<string, string> = {
   'DepotDownloaderMod Not Installed': 'DepotDownloaderMod no est\u00e1 instalado',
   'No Depot Keys Found': 'No se encontraron claves de depot',
   'Failed to Resolve Depots': 'No se pudieron resolver los depots',
+
+  // Store page button / badges
+  'Game fixes for app': 'Correcciones de juegos para la app',
+  'Apply SmokeAPI, Steamless, Goldberg or Online-Fix':
+    'Aplicar SmokeAPI, Steamless, Goldberg u Online-Fix',
+  'Add app': 'A\u00f1adir app',
+  'via LumaForge': 'v\u00eda LumaForge',
+  'Select a download source for app': 'Seleccionar una fuente de descarga para la app',
+  FIXES: 'CORRECCIONES',
+  'BRIDGE ERROR': 'ERROR DE PUENTE',
+  'ADD VIA LUMAFORGE': 'A\u00d1ADIR VIA LUMAFORGE',
+  'ADDED TO LUMAFORGE': 'A\u00d1ADIDO EN LUMAFORGE',
+  'ADDING\u2026': 'A\u00d1ADIENDO\u2026',
+  'CHECKING\u2026': 'COMPROBANDO\u2026',
+  'TRY AGAIN': 'REINTENTAR',
+  'START DOWNLOAD': 'INICIAR DESCARGA',
+  'DOWNLOAD CONTENT': 'DESCARGAR CONTENIDO',
+  'CONTINUE BROWSING': 'SEGUIR NAVEGANDO',
+
+  // Source modal badges / tooltips
+  Ready: 'Listo',
+  Available: 'Disponible',
+  Download: 'Descargar',
+  Queued: 'En cola',
+  APPLIED: 'APLICADO',
+  COMPLETED: 'COMPLETADO',
+  FAILED: 'FALLIDO',
+  PAUSED: 'PAUSADO',
+  CANCELLED: 'CANCELADO',
+  Expired: 'Caducada',
+  'FAILED \u2014 RETRY': 'FALLIDO \u2014 REINTENTAR',
+  'Generating\u2026': 'Generando\u2026',
+  'Downloading\u2026': 'Descargando\u2026',
+  'Key expires in': 'La clave caduca en',
+  'downloads left': 'descargas restantes',
+  'remaining today': 'restantes hoy',
+  remaining: 'restantes',
+  'API key': 'Clave API',
+
+  // Depot modal
+  'No manifest': 'Sin manifiesto',
+  'No key': 'Sin clave',
+
+  // Fixes modal rows
+  'No fixes applied yet': 'A\u00fan no hay correcciones aplicadas',
+  'Scanning fix logs\u2026': 'Analizando registros de correcciones\u2026',
+  'Unfixing\u2026': 'Deshaciendo\u2026',
+  'Fixes are tracked per game in <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">lumaforge-fix-log-&lt;appid&gt;.log</code>.':
+    'Las correcciones se registran por juego en <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">lumaforge-fix-log-&lt;appid&gt;.log</code>.',
+  'Unfix removes the pasted files and restores any <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">.bak</code> backups.':
+    'Unfix elimina los archivos pegados y restaura las copias de seguridad <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">.bak</code>.',
+  'SmokeAPI is a tool for Steamworks DLC ownership emulation in games that are legitimately owned in Steam':
+    'SmokeAPI es una herramienta para la emulaci\u00f3n de propiedad de DLC de Steamworks en juegos leg\u00edtimamente adquiridos en Steam',
+  'Removes SteamStub DRM from the game executable. The backend verifies SteamStub on apply and reports if unpacking is not needed.':
+    'Elimina la protecci\u00f3n SteamStub DRM del ejecutable del juego. Al aplicarla, el backend verifica SteamStub e informa si no es necesario desempaquetar.',
+  'Steam emulator (fork): steam_api wrapper, achievements and LAN support.':
+    'Emulador de Steam (fork): wrapper de steam_api, logros y soporte de LAN.',
+  'Online-Fix.net crack for multiplayer/online games (requires a RAR extractor).':
+    'Crack de Online-Fix.net para juegos multijugador/en l\u00ednea (requiere un extractor de RAR).',
+
+  // Fix descriptions / fixed labels
+  Catalog: 'Cat\u00e1logo',
+  'Catalog fix': 'Correcci\u00f3n de cat\u00e1logo',
+
+  // Downloads tab / history
+  History: 'Historial',
+  'Clear History': 'Borrar historial',
+  Clear: 'Borrar',
+  Remove: 'Eliminar',
+  Resume: 'Reanudar',
+  Pause: 'Pausar',
+  ACTIVE: 'ACTIVO',
+  Speed: 'Velocidad',
+  Peak: 'M\u00e1x',
+  'App ID': 'ID de app',
+  game: 'juego',
+  games: 'juegos',
+  file: 'archivo',
+  files: 'archivos',
+  Account: 'Cuenta',
+
+  // Tools tab
+  'Loading tools\u2026': 'Cargando herramientas\u2026',
+  Install: 'Instalar',
+  Update: 'Actualizar',
+  Uninstall: 'Desinstalar',
+  saved: 'guardado',
+  'SteamStub DRM unpacker for game executables': 'Desempaqueta la protecci\u00f3n SteamStub DRM de los ejecutables de juegos',
+  'Goldberg Steam Emu fork by Detanup01 + config tools':
+    'Fork de Goldberg Steam Emu de Detanup01 + herramientas de configuraci\u00f3n',
+  'Open-source Steam unlocker with Lua scripting':
+    'Desbloqueador de Steam de c\u00f3digo abierto con scripting Lua',
+  'Anonymous Steam depot downloader \u2014 downloads game files directly from Steam':
+    'Descargador an\u00f3nimo de depots de Steam \u2014 descarga los archivos del juego directamente de Steam',
+  'Redirect Steam Cloud saves to Google Drive, OneDrive, S3, R2, or local folder':
+    'Redirige los guardados de Steam Cloud a Google Drive, OneDrive, S3, R2 o una carpeta local',
+  'Steam client modification for Linux \u2014 enables playing unowned games via LD_AUDIT':
+    'Modificaci\u00f3n del cliente de Steam para Linux \u2014 permite jugar juegos no adquiridos mediante LD_AUDIT',
+
+  // Settings tab
+  'Steam Web API Key': 'Clave API de Steam Web',
+  '(Goldberg achievements)': '(logros de Goldberg)',
+  '(Voices38 / catalog fixes)': '(correcciones Voices38 / cat\u00e1logo)',
+  '(Account ID)': '(ID de cuenta)',
+  'Enter your Steam Web API key': 'Introduce tu clave API de Steam Web',
+  'Get API key': 'Obtener clave API',
+  'Detect Steam account': 'Detectar cuenta de Steam',
+  'Detect failed': 'Error al detectar',
+  'No accounts found in loginusers.vdf': 'No se encontraron cuentas en loginusers.vdf',
+  'Scanning loginusers.vdf\u2026': 'Analizando loginusers.vdf\u2026',
+  'Opening steamcommunity.com\u2026': 'Abriendo steamcommunity.com\u2026',
+  Hide: 'Ocultar',
+  Version: 'Versi\u00f3n',
+  'Close sidebar': 'Cerrar barra lateral',
+  'Manifest pinning for generated Lua scripts':
+    'Fijado de manifiestos para los scripts Lua generados',
+
+  // Cloud Saves tab
+  Cloud: 'Nube',
+  'Cloud Redirect is not installed': 'Cloud Redirect no est\u00e1 instalado',
+  'Cloud save sync runs inside Steam through the Cloud Redirect DLL. Install it to back up your saves to the cloud.':
+    'La sincronizaci\u00f3n de guardados en la nube funciona dentro de Steam mediante la DLL Cloud Redirect. Inst\u00e1lala para respaldar tus guardados en la nube.',
+  'Install Cloud Redirect': 'Instalar Cloud Redirect',
+  'Sign out': 'Cerrar sesi\u00f3n',
+  'Storage provider': 'Proveedor de almacenamiento',
+  'Local Folder': 'Carpeta local',
+  'Local folder': 'Carpeta local',
+  'Sign in with Google': 'Iniciar sesi\u00f3n con Google',
+  'Sign in with Microsoft': 'Iniciar sesi\u00f3n con Microsoft',
+  Use: 'Usar',
+  'not signed in': 'sin iniciar sesi\u00f3n',
+  'Save R2': 'Guardar R2',
+  'Save S3': 'Guardar S3',
+  'Save Folder': 'Guardar carpeta',
+  'Folder path': 'Ruta de la carpeta',
+  'Saved \u2014 leave blank to keep': 'Guardado \u2014 deja en blanco para conservarlo',
+  'Key Prefix (optional)': 'Prefijo de clave (opcional)',
+  'Endpoint (optional)': 'Endpoint (opcional)',
+  Achievements: 'Logros',
+  'Sync achievement progress with the cloud': 'Sincronizar el progreso de logros con la nube',
+  Playtime: 'Tiempo de juego',
+  'Sync playtime counters with the cloud':
+    'Sincronizar los contadores de tiempo de juego con la nube',
+  'Changes apply after restarting Steam.': 'Los cambios se aplican tras reiniciar Steam.',
+  'Synced Games': 'Juegos sincronizados',
+  'Sign-in could not be started': 'No se pudo iniciar el inicio de sesi\u00f3n',
+  'Complete the sign-in in your browser\u2026': 'Completa el inicio de sesi\u00f3n en tu navegador\u2026',
+  'Provider activated': 'Proveedor activado',
+  'Could not activate provider': 'No se pudo activar el proveedor',
+  'Could not save stats setting': 'No se pudo guardar el ajuste de estad\u00edsticas',
+  'Sign-out failed': 'Error al cerrar la sesi\u00f3n',
+  'Saved \u2014 restart Steam to apply': 'Guardado \u2014 reinicia Steam para aplicar',
+  'Delete request failed': 'La solicitud de eliminaci\u00f3n fall\u00f3',
+  'Auto-fetch manifests after generating': 'Obtener manifiestos autom\u00e1ticamente tras generar',
+  'Account ID': 'ID de cuenta',
+  'Access Key ID': 'ID de clave de acceso',
+  'Secret Access Key': 'Clave secreta de acceso',
+  Region: 'Regi\u00f3n',
 };

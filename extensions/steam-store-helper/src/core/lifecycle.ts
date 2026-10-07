@@ -11,6 +11,7 @@ import { pushHistoryToBridge } from './history_sync';
 import { detectBridgePort, extractAppId, bridgeUrl, isLibrarySurface } from '../ui/helpers';
 import { resolveThemeColors, watchThemeReload } from '../ui/themeColor';
 import { startManageMenu, stopManageMenu } from '../ui/manageMenu';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Teardown
@@ -157,7 +158,7 @@ function setupEventDelegation(): void {
             state.bridgeRecoveryAppId = btnAppId;
             state.bridgeRecoveryCount = 0;
 
-            setButtonState(btnAppId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>CHECKING\u2026</span>', true);
+            setButtonState(btnAppId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('CHECKING\u2026') + '</span>', true);
             setButtonLumaState(btnAppId, 'checking');
             checkLocalStatus(btnAppId, function (err: any, data: any, resolvedId: string) {
               handleLocalStatusResult(resolvedId, err, data);

@@ -455,7 +455,7 @@ export function renderSources(
         } else {
           var days = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
           var hours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-          expiryText = 'Key expires in ' + days + 'd ' + hours + 'h';
+          expiryText = t('Key expires in') + ' ' + days + 'd ' + hours + 'h';
           if (days < 3) expiryClass = 'warning';
         }
 
@@ -644,12 +644,7 @@ export function renderSources(
           Number.isFinite(dailyLimit) &&
           dailyLimit > 0
         ) {
-          usageParts.push(
-            remainingToday +
-            '/' +
-            dailyLimit +
-            ' downloads left'
-          );
+          usageParts.push(remainingToday + '/' + dailyLimit + ' ' + t('downloads left'));
         }
 
         var expirationText = formatTimeRemaining(
@@ -709,7 +704,7 @@ export function renderSources(
         autofetchWrap.setAttribute('style', 'display:flex;align-items:center;gap:6px;cursor:pointer;font-size:11px;color:rgba(255,255,255,.7);user-select:none;margin-top:6px;');
         autofetchWrap.innerHTML =
           '<input type="checkbox" id="luma-sk-autofetch" style="accent-color:var(--luma-ssh-accent,#66c0ff);cursor:pointer;">' +
-          '<span>Auto-fetch manifests after generating</span>';
+          '<span>' + t('Auto-fetch manifests after generating') + '</span>';
         info.appendChild(autofetchWrap);
       }
 
@@ -725,7 +720,7 @@ export function renderSources(
 
         badge.innerHTML =
           dot('green') +
-          '<span>Ready</span>';
+          '<span>' + t('Ready') + '</span>';
       } else if (keyExpired) {
         var expiredNoKey = src.keyError === true && !!src.detail && src.detail.indexOf('No API key') === 0;
         badge.setAttribute(
@@ -735,7 +730,7 @@ export function renderSources(
 
         badge.innerHTML =
           dot('red') +
-          '<span>' + (expiredNoKey ? 'No API Key' : 'API Expired') + '</span>';
+          '<span>' + (expiredNoKey ? t('No API Key') : t('API Expired')) + '</span>';
       } else if (avail) {
         badge.setAttribute(
           'style',
@@ -744,7 +739,7 @@ export function renderSources(
 
         badge.innerHTML =
           dot('green') +
-          '<span>Available</span>';
+          '<span>' + t('Available') + '</span>';
       } else if (checkOnDownload && selectable) {
         badge.setAttribute(
           'style',
@@ -764,7 +759,7 @@ export function renderSources(
 
         badge.innerHTML =
           dot('blue') +
-          '<span>Download</span>';
+          '<span>' + t('Download') + '</span>';
       } else {
         badge.setAttribute(
           'style',
@@ -773,7 +768,7 @@ export function renderSources(
 
         badge.innerHTML =
           dot('gray') +
-          '<span>Unavailable</span>';
+          '<span>' + t('Unavailable') + '</span>';
       }
 
       var tooltip = document.createElement('div');
@@ -784,12 +779,12 @@ export function renderSources(
         var pstat2 = findProviderStat(src.id);
         if (pstat2 && pstat2.hasKey) {
           if (pstat2.remainingToday != null && pstat2.dailyLimit != null && pstat2.dailyLimit > 0) {
-            tooltipParts.push('Downloads: ' + pstat2.remainingToday + '/' + pstat2.dailyLimit + ' remaining today');
+            tooltipParts.push(t('Downloads') + ': ' + pstat2.remainingToday + '/' + pstat2.dailyLimit + ' ' + t('remaining today'));
           }
           if (pstat2.apiKeyExpiresAt) {
             var expText = formatTimeRemaining(pstat2.apiKeyExpiresAt);
             if (expText) {
-              tooltipParts.push('API key: ' + (expText === 'Expired' ? 'Expired' : expText + ' remaining'));
+              tooltipParts.push(t('API key') + ': ' + (expText === 'Expired' ? t('Expired') : expText + ' ' + t('remaining')));
             }
           }
         }
@@ -842,10 +837,10 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
     var badge = getModalBadge(card);
     if (badge) {
       badge.setAttribute('style', ST.badgeAvail);
-      badge.innerHTML = dot('blue') + '<span>ADDING\u2026</span>';
+      badge.innerHTML = dot('blue') + '<span>' + t('ADDING\u2026') + '</span>';
     }
 
-    setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>ADDING\u2026</span>', true);
+    setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('ADDING\u2026') + '</span>', true);
     setButtonLumaState(appId, 'adding');
 
     var selectedOutputType = 'lua+manifest';
@@ -881,7 +876,7 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
           sourceId: sourceId,
           pollSeq: 0,
           pollTimer: null,
-          phase: 'Queued',
+          phase: t('Queued'),
           progress: 0,
           speed: 0,
           bytesDownloaded: 0,
@@ -891,7 +886,7 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
 
         if (badge) {
           badge.setAttribute('style', ST.badgeAvail);
-          badge.innerHTML = dot('blue') + '<span>Queued</span>';
+          badge.innerHTML = dot('blue') + '<span>' + t('Queued') + '</span>';
         }
 
         showDownloadProgress(appId, d.requestId, sourceId);
@@ -903,12 +898,12 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
         card.removeAttribute('style');
         if (badge) {
           badge.setAttribute('style', ST.badgeUnavail);
-          badge.innerHTML = dot('red') + '<span>FAILED \u2014 RETRY</span>';
+          badge.innerHTML = dot('red') + '<span>' + t('FAILED \u2014 RETRY') + '</span>';
         }
-        setButtonState(appId, ST.btn, svgDownload() + '<span>TRY AGAIN</span>', false);
+        setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('TRY AGAIN') + '</span>', false);
         setButtonLumaState(appId, 'ready');
         setTimeout(function () {
-          setButtonState(appId, ST.btn, svgDownload() + '<span>ADD VIA LUMAFORGE</span>', false);
+          setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('ADD VIA LUMAFORGE') + '</span>', false);
         }, 3000);
       });
   } catch (e) { console.error('[CEF_INJECT_ERROR] handleSourceClick:', e); }
@@ -922,14 +917,14 @@ export function showDownloadProgress(appId: string, requestId: string, sourceId?
     var body = getModalBody();
     if (!body) return;
 
-    var title = sourceId === 'steamkeys' ? 'Generating\u2026' : 'Downloading\u2026';
+    var title = sourceId === 'steamkeys' ? t('Generating\u2026') : t('Downloading\u2026');
     body.innerHTML =
       '<div style="' + ST.progressWrap + '">' +
       '<div style="margin-bottom:14px;">' + svgSpinner() + '</div>' +
       '<div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:6px;">' + title + '</div>' +
       '<div style="' + ST.progressLabel + '"><span style="font-family:monospace;font-size:10px;opacity:.7;" title="' + (requestId || '') + '">' + (requestId || '').slice(0, 16) + '\u2026</span></div>' +
       '<div style="' + ST.progressBar + '"><div id="luma-progress-fill" style="' + ST.progressFill + '"></div></div>' +
-      '<div id="luma-progress-status" style="font-size:12px;color:var(--luma-ssh-accent,#66c0ff);">Queued</div>' +
+      '<div id="luma-progress-status" style="font-size:12px;color:var(--luma-ssh-accent,#66c0ff);">' + t('Queued') + '</div>' +
       '</div>';
     try { logModalHorizontalOverflow(); } catch (_) { }
   } catch (_) { }
@@ -1134,14 +1129,14 @@ export function restartDownloadPoll(requestId: string, appId: string): void {
 export function showDownloadSuccess(appId: string, requestId: string): void {
   try {
     // Button state must update even if the user closed the modal already.
-    setButtonState(appId, ST.btnSuccess + 'cursor:default;', svgCheck() + '<span>ADDED TO LUMAFORGE</span>', true);
+    setButtonState(appId, ST.btnSuccess + 'cursor:default;', svgCheck() + '<span>' + t('ADDED TO LUMAFORGE') + '</span>', true);
     setButtonLumaState(appId, 'added');
 
     var body = getModalBody();
     if (!body) return;
 
     var depotBtn = IS_LINUX
-      ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>DOWNLOAD CONTENT</span></button>'
+      ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>' + t('DOWNLOAD CONTENT') + '</span></button>'
       : '';
     var libraryBtnStyle = IS_LINUX ? ST.secondaryBtn : ST.primaryBtn;
 
@@ -1152,8 +1147,8 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
       '<div style="' + ST.successDetail + '">' + t('The package has been downloaded and installed to your Steam library.') + '</div>' +
       '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
       depotBtn +
-      '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>VIEW IN LIBRARY</span></button>' +
-      '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">CONTINUE BROWSING</button>' +
+      '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>' + t('VIEW IN LIBRARY') + '</span></button>' +
+      '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">' + t('CONTINUE BROWSING') + '</button>' +
       '</div>' +
       '</div>';
 
@@ -1190,10 +1185,10 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
 export function showDownloadError(appId: string, message: string, errorCode?: string): void {
   try {
     // Button state must reset even if the user closed the modal already.
-    setButtonState(appId, ST.btn, svgDownload() + '<span>TRY AGAIN</span>', false);
+    setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('TRY AGAIN') + '</span>', false);
     setButtonLumaState(appId, 'ready');
     setTimeout(function () {
-      setButtonState(appId, ST.btn, svgDownload() + '<span>ADD VIA LUMAFORGE</span>', false);
+      setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('ADD VIA LUMAFORGE') + '</span>', false);
     }, 4000);
 
     var body = getModalBody();
@@ -1206,8 +1201,8 @@ export function showDownloadError(appId: string, message: string, errorCode?: st
       '<div style="' + ST.errorTitle + '">' + t('Download Failed') + '</div>' +
       '<div style="' + ST.errorMsgNew + '">' + detail + '</div>' +
       '<div style="' + ST.errorActions + '" class="luma-ssh-error-actions">' +
-      '<button type="button" id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>TRY AGAIN</span></button>' +
-      '<button type="button" id="luma-btn-close-error" style="' + ST.secondaryBtn + '">CLOSE</button>' +
+      '<button type="button" id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>' + t('TRY AGAIN') + '</span></button>' +
+      '<button type="button" id="luma-btn-close-error" style="' + ST.secondaryBtn + '">' + t('CLOSE') + '</button>' +
       '</div>' +
       '</div>';
 

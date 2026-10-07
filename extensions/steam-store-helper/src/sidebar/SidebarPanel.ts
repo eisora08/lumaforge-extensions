@@ -385,7 +385,7 @@ function renderActiveNow(): void {
     var pct = Math.max(0, Math.min(100, dl.progress || 0));
     h += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon blue">' + svgDownload() + '</div><div style="flex:1;min-width:0;">';
     h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">App ' + esc(dl.appId) + '</div>';
-    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(dl.phase || 'Downloading') + ' \u00b7 ' + pct.toFixed(0) + '%</div>';
+    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t(dl.phase || 'Downloading')) + ' \u00b7 ' + pct.toFixed(0) + '%</div>';
     h += '<div style="height:3px;border-radius:2px;background:rgba(255,255,255,.08);margin-top:5px;overflow:hidden;"><div style="height:100%;width:' + pct + '%;background:var(--luma-ssh-accent,#66c0ff);border-radius:2px;transition:width .3s;"></div></div>';
     h += '</div></div>';
   }
@@ -393,7 +393,7 @@ function renderActiveNow(): void {
     var job = state.activeDepotJobs[j];
     h += '<div class="luma-stat-card" style="margin-bottom:6px;"><div class="luma-stat-icon orange">' + svgBox() + '</div><div style="flex:1;min-width:0;">';
     h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.gameName || 'App ' + job.appId) + '</div>';
-    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(job.phase || job.status) + '</div>';
+    h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(t(job.phase || job.status)) + '</div>';
     h += '</div></div>';
   }
   wrap.innerHTML = h;
@@ -539,7 +539,7 @@ function paintLuaCards(): void {
         var badges = '';
     if (installed) badges += ' \u00b7 <span style="color:#64c882;">' + t('Installed') + '</span>';
     if (hasPins) badges += ' \u00b7 <span style="color:#f0ad4e;">' + t('Pinned') + '</span>';
-        if (catRow && catRow.cloudsave && catRow.cloudsave !== false) badges += ' \u00b7 <span style="color:#5bc0de;">Cloud</span>';
+        if (catRow && catRow.cloudsave && catRow.cloudsave !== false) badges += ' \u00b7 <span style="color:#5bc0de;">' + t('Cloud') + '</span>';
 
         h += '<div class="luma-stat-card" data-lua-appid="' + esc(f.appId) + '" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
         h += gameArtHtml(f.appId, svgBox());
@@ -907,7 +907,7 @@ function testProvider(container: HTMLElement, idx: number) {
       }
     })
     .catch(function(err) {
-      statusEl.textContent = '\u2717 Error';
+      statusEl.textContent = '\u2717 ' + t('Error');
       statusEl.style.color = '#e74c3c';
     });
 }
@@ -968,7 +968,7 @@ function renderDownloadsTab(container: HTMLElement) {
   var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Active Downloads') + '</div>';
   html += '<div id="luma-downloads-list"></div>';
   html += '</div>';
-  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="luma-history-toggle"><span>History</span><div style="display:flex;align-items:center;gap:6px;"><button id="luma-clear-history-btn" style="background:none;border:none;color:#8f98a0;font-size:10px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="Clear History">Clear</button><span style="font-size:10px;color:#8f98a0;">&#9660;</span></div></div>';
+  html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" id="luma-history-toggle"><span>' + t('History') + '</span><div style="display:flex;align-items:center;gap:6px;"><button id="luma-clear-history-btn" style="background:none;border:none;color:#8f98a0;font-size:10px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="' + t('Clear History') + '">' + t('Clear') + '</button><span style="font-size:10px;color:#8f98a0;">&#9660;</span></div></div>';
   html += '<div id="luma-history-list"></div>';
   html += '</div>';
   container.innerHTML = html;
@@ -1034,7 +1034,7 @@ function renderDownloadsTab(container: HTMLElement) {
       var hist = histArr[h];
       var isPaused = hist.status === 'paused';
       var statusColor = hist.status === 'completed' ? '#67e8f9' : hist.status === 'failed' ? '#f87171' : isPaused ? '#fbbf24' : '#f87171';
-      var statusLabel = hist.status === 'completed' ? 'COMPLETED' : hist.status === 'failed' ? 'FAILED' : isPaused ? 'PAUSED' : 'CANCELLED';
+      var statusLabel = hist.status === 'completed' ? t('COMPLETED') : hist.status === 'failed' ? t('FAILED') : isPaused ? t('PAUSED') : t('CANCELLED');
       var statusBg = hist.status === 'completed' ? 'rgba(103,232,249,.12)' : hist.status === 'failed' ? 'rgba(248,113,113,.12)' : isPaused ? 'rgba(251,191,36,.12)' : 'rgba(248,113,113,.12)';
       var pct = hist.status === 'completed' ? 100 : hist.status === 'failed' ? (hist.progress || 0) : hist.totalBytes > 0 ? Math.round((hist.bytesDownloaded / hist.totalBytes) * 100) : (hist.progress || 0);
       var timeAgo = formatTimeAgo(hist.timestamp || hist.completedAt || 0);
@@ -1043,7 +1043,7 @@ function renderDownloadsTab(container: HTMLElement) {
       hHtml += '<div style="font-size:12px;font-weight:600;color:#fff;">' + esc(hist.gameName || 'App ' + hist.appId) + '</div>';
       hHtml += '<div style="display:flex;align-items:center;gap:4px;">';
       hHtml += '<div style="padding:2px 6px;border-radius:6px;font-size:9px;font-weight:700;background:' + statusBg + ';color:' + statusColor + ';">' + statusLabel + '</div>';
-      hHtml += '<button data-remove-history="' + hist.id + '" style="background:none;border:none;color:#8f98a0;font-size:11px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="Remove">&times;</button>';
+      hHtml += '<button data-remove-history="' + hist.id + '" style="background:none;border:none;color:#8f98a0;font-size:11px;cursor:pointer;padding:2px 4px;border-radius:4px;" title="' + t('Remove') + '">&times;</button>';
       hHtml += '</div>';
       hHtml += '</div>';
       hHtml += '<div style="display:flex;align-items:center;justify-content:space-between;">';
@@ -1054,7 +1054,7 @@ function renderDownloadsTab(container: HTMLElement) {
       hHtml += '<div style="height:100%;width:' + pct + '%;background:' + statusColor + ';border-radius:2px;"></div>';
       hHtml += '</div>';
       if (isPaused) {
-        hHtml += '<button data-resume-history="' + h + '" data-resume-type="' + hist.type + '" data-resume-appid="' + hist.appId + '" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));background:var(--luma-ssh-a10,rgba(102,192,255,.1));color:var(--luma-ssh-accent,#66c0ff);font-size:10px;font-weight:600;cursor:pointer;">' + svgPlay() + ' Resume</button>';
+        hHtml += '<button data-resume-history="' + h + '" data-resume-type="' + hist.type + '" data-resume-appid="' + hist.appId + '" style="margin-top:8px;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:6px;border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));background:var(--luma-ssh-a10,rgba(102,192,255,.1));color:var(--luma-ssh-accent,#66c0ff);font-size:10px;font-weight:600;cursor:pointer;">' + svgPlay() + ' ' + t('Resume') + '</button>';
       }
       hHtml += '</div>';
     }
@@ -1142,7 +1142,7 @@ function renderDownloadsTab(container: HTMLElement) {
             jobId: dl.requestId,
             gameName: 'App ' + dl.appId,
             appId: dl.appId,
-            phase: dl.phase || 'Downloading',
+            phase: t(dl.phase || 'Downloading'),
             progress: dl.progress,
             speed: dl.speed,
             peak: speeds.peak,
@@ -1159,12 +1159,12 @@ function renderDownloadsTab(container: HTMLElement) {
           var item = queue[j];
           var dSpeeds = computeSpeed(item.id, item.bytesDownloaded);
           var dHistory = getSpeedHistory(item.id);
-          var position = item.status === 'queued' ? ' (Queued #' + (j + 1) + ')' : '';
+          var position = item.status === 'queued' ? ' (' + t('Queued') + ' #' + (j + 1) + ')' : '';
           cardsHtml += renderActiveCard({
             jobId: item.id,
             gameName: item.gameName || 'App ' + item.appId,
             appId: String(item.appId),
-            phase: (item.status === 'downloading' ? 'Downloading' : item.status === 'queued' ? 'Queued' : item.status === 'interrupted' ? 'Interrupted — resuming...' : item.status) + position,
+            phase: t(item.status === 'downloading' ? 'Downloading' : item.status === 'queued' ? 'Queued' : item.status === 'interrupted' ? 'Interrupted \u2014 resuming...' : item.status) + position,
             progress: item.progress,
             speed: dSpeeds.speed,
             peak: dSpeeds.peak,
@@ -1251,17 +1251,17 @@ function renderActiveCard(opts: {
   h += '<div style="width:8px;height:8px;border-radius:50%;background:#67e8f9;flex-shrink:0;' + (isAnimating ? 'animation:luma_ssh_pulse 2s infinite;' : '') + '"></div>';
   h += '<div style="min-width:0;">';
   h += '<div style="font-size:13px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(opts.gameName) + '</div>';
-  h += '<div style="font-size:10px;color:#8f98a0;">App ID: ' + opts.appId + (opts.type === 'depot' ? ' \u00b7 Depot' : '') + '</div>';
+  h += '<div style="font-size:10px;color:#8f98a0;">' + t('App ID') + ': ' + opts.appId + (opts.type === 'depot' ? ' \u00b7 Depot' : '') + '</div>';
   h += '</div></div>';
 
   // Status badge
-  h += '<div style="padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700;background:rgba(103,232,249,.12);color:#67e8f9;">ACTIVE</div>';
+  h += '<div style="padding:3px 8px;border-radius:8px;font-size:10px;font-weight:700;background:rgba(103,232,249,.12);color:#67e8f9;">' + t('ACTIVE') + '</div>';
   h += '</div>';
 
   // Progress info
   h += '<div>';
   h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">';
-  h += '<span style="font-size:11px;color:#8f98a0;">' + escapeHtml(opts.phase) + '</span>';
+  h += '<span style="font-size:11px;color:#8f98a0;">' + escapeHtml(t(opts.phase)) + '</span>';
   h += '<span style="font-size:12px;font-weight:700;color:#fff;">' + pct.toFixed(1) + '%</span>';
   h += '</div>';
 
@@ -1282,10 +1282,10 @@ function renderActiveCard(opts: {
 
   // Speed
   h += '<div style="min-width:80px;display:flex;flex-direction:column;align-items:center;">';
-  h += '<span style="font-size:8px;text-transform:uppercase;color:rgba(255,255,255,.4);letter-spacing:.5px;">Speed</span>';
+  h += '<span style="font-size:8px;text-transform:uppercase;color:rgba(255,255,255,.4);letter-spacing:.5px;">' + t('Speed') + '</span>';
   h += '<span style="font-size:14px;font-weight:700;color:#fff;">' + formatSpeed(opts.speed) + '</span>';
   if (opts.peak > 0) {
-    h += '<span style="font-size:8px;color:rgba(255,255,255,.3);">Peak ' + formatSpeed(opts.peak) + '</span>';
+    h += '<span style="font-size:8px;color:rgba(255,255,255,.3);">' + t('Peak') + ' ' + formatSpeed(opts.peak) + '</span>';
   }
   h += '</div>';
 
@@ -1315,11 +1315,11 @@ function renderActiveCard(opts: {
   if (opts.type === 'depot') {
     var isPaused = opts.status === 'paused';
     var btnLabel = isPaused ? '\u25b6' : '\u23f8';
-    var btnTitle = isPaused ? 'Resume' : 'Pause';
+    var btnTitle = isPaused ? t('Resume') : t('Pause');
     var btnAction = isPaused ? 'resume-job' : 'pause-job';
     h += '<button data-' + btnAction + '="' + opts.jobId + '" data-job-type="depot" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(255,255,255,.15);background:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" title="' + btnTitle + '">' + btnLabel + '</button>';
   }
-  h += '<button data-cancel-job="' + opts.jobId + '" data-job-type="' + opts.type + '" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(231,76,60,.3);background:none;color:#e74c3c;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" title="Cancel">\u2715</button>';
+  h += '<button data-cancel-job="' + opts.jobId + '" data-job-type="' + opts.type + '" style="width:28px;height:28px;border-radius:6px;border:1px solid rgba(231,76,60,.3);background:none;color:#e74c3c;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" title="' + t('Cancel') + '">\u2715</button>';
   h += '</div>';
 
   h += '</div>'; // capsule
@@ -1432,7 +1432,7 @@ function renderToolsTab(container: HTMLElement) {
   var seq = ++_toolsPollSeq;
 
   var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Third-Party Tools') + '</div>';
-  html += '<div id="luma-tools-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' Loading tools…</div></div>';
+  html += '<div id="luma-tools-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' ' + t('Loading tools…') + '</div></div>';
   html += '</div>';
   html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">' + t('Steam Integration') + '</div>';
   html += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
@@ -1492,17 +1492,17 @@ function renderToolsTab(container: HTMLElement) {
       rows += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">';
       rows += '<div style="min-width:0;">';
       rows += '<div style="font-size:13px;font-weight:600;color:#fff;">' + esc(tool.name) + '</div>';
-      rows += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(tool.description || '') + '</div>';
+      rows += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t(tool.description || '')) + '</div>';
       rows += '</div>';
       rows += '<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
       if (tool.installed) {
-        rows += badge(tool.installedVersion ? 'Installed v' + tool.installedVersion : 'Installed', 'rgba(100,200,130,.15)', '#64c882');
+        rows += badge(tool.installedVersion ? t('Installed') + ' v' + tool.installedVersion : t('Installed'), 'rgba(100,200,130,.15)', '#64c882');
       }
       if (tool.updateAvailable && tool.latestVersion) {
-        rows += badge('Update → ' + tool.latestVersion, 'var(--luma-ssh-a15,rgba(102,192,255,.15))', 'var(--luma-ssh-accent,#66c0ff)');
+        rows += badge(t('Update') + ' → ' + tool.latestVersion, 'var(--luma-ssh-a15,rgba(102,192,255,.15))', 'var(--luma-ssh-accent,#66c0ff)');
       }
       if (busy) {
-        rows += badge(job.status === 'restarting' ? 'Restarting…' : (job.op + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
+        rows += badge(job.status === 'restarting' ? t('Restarting…') : (t(job.op) + ' ' + job.progress + '%'), 'rgba(251,191,36,.15)', '#fbbf24');
       }
       rows += '</div>';
       rows += '</div>';
@@ -1524,12 +1524,12 @@ function renderToolsTab(container: HTMLElement) {
       if (tool.available) {
         rows += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
         if (!tool.installed) {
-          rows += '<button class="luma-sidebar-btn primary" data-tool-action="install" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Install</button>';
+          rows += '<button class="luma-sidebar-btn primary" data-tool-action="install" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>' + t('Install') + '</button>';
         } else {
           if (tool.updateAvailable) {
-            rows += '<button class="luma-sidebar-btn primary" data-tool-action="update" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Update</button>';
+            rows += '<button class="luma-sidebar-btn primary" data-tool-action="update" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>' + t('Update') + '</button>';
           }
-          rows += '<button class="luma-sidebar-btn secondary" data-tool-action="uninstall" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>Uninstall</button>';
+          rows += '<button class="luma-sidebar-btn secondary" data-tool-action="uninstall" data-tool-id="' + esc(tool.id) + '"' + (busy ? ' disabled style="opacity:.5;cursor:default;"' : '') + '>' + t('Uninstall') + '</button>';
         }
         rows += '</div>';
       }
@@ -1616,12 +1616,12 @@ function renderFixesTab(container: HTMLElement) {
   var seq = ++_fixesPollSeq;
 
   var html = '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Applied Fixes') + '</div>';
-  html += '<div id="luma-fixes-applied-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' Scanning fix logs…</div></div>';
+  html += '<div id="luma-fixes-applied-list"><div style="text-align:center;padding:24px;color:#8f98a0;">' + svgSpinner() + ' ' + t('Scanning fix logs…') + '</div></div>';
   html += '</div>';
   html += '<div class="luma-sidebar-section" style="margin-top:12px;"><div class="luma-sidebar-section-title">' + t('Notes') + '</div>';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.6;">';
-  html += '<div>Fixes are tracked per game in <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">lumaforge-fix-log-&lt;appid&gt;.log</code>.</div>';
-  html += '<div style="margin-top:4px;">Unfix removes the pasted files and restores any <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">.bak</code> backups.</div>';
+  html += '<div>' + t('Fixes are tracked per game in <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">lumaforge-fix-log-&lt;appid&gt;.log</code>.') + '</div>';
+  html += '<div style="margin-top:4px;">' + t('Unfix removes the pasted files and restores any <code style="background:rgba(255,255,255,.06);padding:1px 4px;border-radius:3px;">.bak</code> backups.') + '</div>';
   html += '</div></div>';
   container.innerHTML = html;
 
@@ -1635,7 +1635,7 @@ function renderFixesTab(container: HTMLElement) {
     if (seq !== _fixesPollSeq || !listEl || !document.getElementById('luma-fixes-applied-list')) return;
 
     if (!games || games.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8f98a0;">No fixes applied yet</div>';
+      listEl.innerHTML = '<div style="text-align:center;padding:24px;color:#8f98a0;">' + t('No fixes applied yet') + '</div>';
       return;
     }
 
@@ -1662,7 +1662,7 @@ function renderFixesTab(container: HTMLElement) {
         var m = active[k];
         rows += '<button class="luma-sidebar-btn secondary" data-fix-unfix-app="' + esc(g.appId) + '" data-fix-unfix-tool="' + esc(m.tool) + '"' +
           (m.fixType ? ' data-fix-unfix-type="' + esc(m.fixType) + '"' : '') +
-          '>Unfix ' + esc(m.label) + '</button>';
+          '>' + t('Unfix') + ' ' + esc(m.label) + '</button>';
       }
       rows += '</div>';
       rows += '</div>';
@@ -1679,7 +1679,7 @@ function renderFixesTab(container: HTMLElement) {
         if (!appId || !tool) return;
         this.setAttribute('disabled', 'true');
         this.style.opacity = '0.5';
-        this.textContent = 'Unfixing…';
+        this.textContent = t('Unfixing…');
         var payload: any = { tool: tool };
         if (fixType) payload.fix_type = fixType;
         fetch(fixesUnfixUrl(appId), {
@@ -1763,23 +1763,23 @@ function renderSettingsTab(container: HTMLElement) {
   // ── Steam Account ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Steam Account') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">Steam Web API Key <span style="color:var(--luma-ssh-accent,#66c0ff);">(Goldberg achievements)</span></div>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">' + t('Steam Web API Key') + ' <span style="color:var(--luma-ssh-accent,#66c0ff);">' + t('(Goldberg achievements)') + '</span></div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:6px;">';
-  html += '<input id="luma-steam-apikey" type="password" placeholder="Enter your Steam Web API key" style="flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;" />';
-  html += '<button type="button" id="luma-steam-apikey-eye" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#8f98a0;font-size:11px;padding:0 10px;cursor:pointer;">Show</button>';
+  html += '<input id="luma-steam-apikey" type="password" placeholder="' + t('Enter your Steam Web API key') + '" style="flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;" />';
+  html += '<button type="button" id="luma-steam-apikey-eye" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#8f98a0;font-size:11px;padding:0 10px;cursor:pointer;">' + t('Show') + '</button>';
   html += '</div>';
-  html += '<button type="button" id="luma-steam-getkey" style="background:var(--luma-ssh-a10,rgba(102,192,255,.1));border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));border-radius:6px;color:var(--luma-ssh-accent,#66c0ff);font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">Get API key \u2197</button>';
-  html += '<div style="font-size:11px;color:#8f98a0;margin:10px 0 4px;">SteamID64 <span style="color:var(--luma-ssh-accent,#66c0ff);">(Voices38 / catalog fixes)</span></div>';
+  html += '<button type="button" id="luma-steam-getkey" style="background:var(--luma-ssh-a10,rgba(102,192,255,.1));border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));border-radius:6px;color:var(--luma-ssh-accent,#66c0ff);font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">' + t('Get API key') + ' \u2197</button>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin:10px 0 4px;">SteamID64 <span style="color:var(--luma-ssh-accent,#66c0ff);">' + t('(Voices38 / catalog fixes)') + '</span></div>';
   html += '<input id="luma-steam-id64" type="text" placeholder="76561197960265728" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:8px;" />';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">SteamID32 (Account ID)</div>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">SteamID32 ' + t('(Account ID)') + '</div>';
   html += '<input id="luma-steam-id32" type="text" placeholder="12345678" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:10px;" />';
   html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
-  html += '<button type="button" id="luma-steam-detect" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">Detect Steam account</button>';
+  html += '<button type="button" id="luma-steam-detect" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">' + t('Detect Steam account') + '</button>';
   html += '<span id="luma-steam-acct" style="font-size:10px;color:#8f98a0;"></span>';
   html += '</div>';
   html += '<div id="luma-steam-accounts" style="margin-bottom:8px;"></div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
-  html += '<button type="button" id="luma-steam-save" style="background:rgba(46,160,67,.15);border:1px solid rgba(46,160,67,.4);border-radius:6px;color:#64c882;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">Save</button>';
+  html += '<button type="button" id="luma-steam-save" style="background:rgba(46,160,67,.15);border:1px solid rgba(46,160,67,.4);border-radius:6px;color:#64c882;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">' + t('Save') + '</button>';
   html += '<span id="luma-steam-status" style="font-size:11px;color:#64c882;"></span>';
   html += '</div>';
   html += '</div></div>';
@@ -1787,9 +1787,9 @@ function renderSettingsTab(container: HTMLElement) {
   // ── Key Generator ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Key Generator') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:8px;">Manifest pinning for generated Lua scripts</div>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:8px;">' + t('Manifest pinning for generated Lua scripts') + '</div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
-  html += '<button type="button" id="luma-sk-unpin-all" style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);border-radius:6px;color:#e74c3c;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">Unpin All Manifests</button>';
+  html += '<button type="button" id="luma-sk-unpin-all" style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);border-radius:6px;color:#e74c3c;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">' + t('Unpin All Manifests') + '</button>';
   html += '<span id="luma-sk-unpin-status" style="font-size:11px;color:#8f98a0;"></span>';
   html += '</div>';
   html += '</div></div>';
@@ -1799,14 +1799,14 @@ function renderSettingsTab(container: HTMLElement) {
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Steam Store Helper</div>';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.6;">';
-  html += '<div>Version: ' + LUMA_VERSION + '</div>';
+  html += '<div>' + t('Version') + ': ' + LUMA_VERSION + '</div>';
   html += '<div>TypeScript + Vite</div>';
   html += '<div>LumaForge CDP Proxy</div>';
   html += '</div></div></div>';
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Keyboard Shortcuts') + '</div>';
   html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.8;">';
-  html += '<div><kbd style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:10px;">Esc</kbd> Close sidebar</div>';
+  html += '<div><kbd style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:10px;">Esc</kbd> ' + t('Close sidebar') + '</div>';
   html += '</div></div></div>';
   container.innerHTML = html;
   wireSteamAccountSection(container);
@@ -1873,7 +1873,7 @@ function wireSteamAccountSection(container: HTMLElement) {
       id32Input.value = data.steamId32 || '';
       accountName = data.accountName || '';
       if (accountName) {
-        acctEl.textContent = 'Account: ' + accountName;
+        acctEl.textContent = t('Account') + ': ' + accountName;
         acctEl.style.color = '#64c882';
       }
     })
@@ -1883,7 +1883,7 @@ function wireSteamAccountSection(container: HTMLElement) {
     eyeBtn.addEventListener('click', function() {
       var show = apiKeyInput.type === 'password';
       apiKeyInput.type = show ? 'text' : 'password';
-      eyeBtn.textContent = show ? 'Hide' : 'Show';
+      eyeBtn.textContent = show ? t('Hide') : t('Show');
     });
   }
 
@@ -1900,7 +1900,7 @@ function wireSteamAccountSection(container: HTMLElement) {
       }, 'open-apikey', {})
         .then(function(r) { return r.json(); })
         .then(function(data) {
-          statusEl.textContent = data.ok ? 'Opening steamcommunity.com\u2026' : (data.message || 'Failed');
+          statusEl.textContent = data.ok ? t('Opening steamcommunity.com\u2026') : (data.message || t('Failed'));
           statusEl.style.color = data.ok ? '#64c882' : '#ff6e6e';
         })
         .catch(function() {
@@ -1912,17 +1912,17 @@ function wireSteamAccountSection(container: HTMLElement) {
 
   if (detectBtn) {
     detectBtn.addEventListener('click', function() {
-      accountsEl.innerHTML = '<div style="font-size:11px;color:var(--luma-ssh-accent,#66c0ff);">Scanning loginusers.vdf\u2026</div>';
+      accountsEl.innerHTML = '<div style="font-size:11px;color:var(--luma-ssh-accent,#66c0ff);">' + t('Scanning loginusers.vdf\u2026') + '</div>';
       fetch(steamAccountDetectUrl(), { method: 'GET', mode: 'cors', cache: 'no-store' })
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (!data.ok) {
-            accountsEl.innerHTML = '<div style="font-size:11px;color:#ff6e6e;">' + esc(data.message || 'Detect failed') + '</div>';
+            accountsEl.innerHTML = '<div style="font-size:11px;color:#ff6e6e;">' + esc(data.message || t('Detect failed')) + '</div>';
             return;
           }
           var accounts = data.accounts || [];
           if (!accounts.length) {
-            accountsEl.innerHTML = '<div style="font-size:11px;color:#8f98a0;">No accounts found in loginusers.vdf</div>';
+            accountsEl.innerHTML = '<div style="font-size:11px;color:#8f98a0;">' + t('No accounts found in loginusers.vdf') + '</div>';
             return;
           }
           var h = '';
@@ -1944,21 +1944,21 @@ function wireSteamAccountSection(container: HTMLElement) {
                 id64Input.value = acc.steamId64 || '';
                 id32Input.value = acc.steamId32 || '';
                 accountName = acc.accountName || '';
-                acctEl.textContent = 'Account: ' + (accountName || '\u2014');
+                acctEl.textContent = t('Account') + ': ' + (accountName || '\u2014');
                 acctEl.style.color = '#64c882';
               });
             })(btns[j] as HTMLElement);
           }
         })
         .catch(function() {
-          accountsEl.innerHTML = '<div style="font-size:11px;color:#ff6e6e;">Detect failed</div>';
+          accountsEl.innerHTML = '<div style="font-size:11px;color:#ff6e6e;">' + t('Detect failed') + '</div>';
         });
     });
   }
 
   saveBtn.addEventListener('click', function() {
     saveBtn.disabled = true;
-    saveBtn.textContent = 'Saving\u2026';
+    saveBtn.textContent = t('Saving\u2026');
     retryFetch(steamAccountUrl(), {
       method: 'POST',
       mode: 'cors',
@@ -2022,8 +2022,8 @@ function cloudSavePost(url: string, body: any, cb?: (d: any) => void): void {
 
 function cloudSaveField(id: string, label: string, type?: string, placeholder?: string): string {
   return '<div style="margin-bottom:6px;">' +
-    '<div style="font-size:10px;color:#8f98a0;margin-bottom:3px;">' + esc(label) + '</div>' +
-    '<input id="' + id + '" type="' + (type || 'text') + '" placeholder="' + esc(placeholder || '') + '" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;color:#fff;font-size:11px;outline:none;" /></div>';
+    '<div style="font-size:10px;color:#8f98a0;margin-bottom:3px;">' + esc(t(label)) + '</div>' +
+    '<input id="' + id + '" type="' + (type || 'text') + '" placeholder="' + esc(t(placeholder || '')) + '" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;color:#fff;font-size:11px;outline:none;" /></div>';
 }
 
 var CS_PROVIDER_NAMES: Record<string, string> = {
@@ -2049,14 +2049,14 @@ function showCloudSavePane(): void {
     if (el) el.style.display = paneIds[i] === target ? '' : 'none';
   }
   var loginBtn = document.getElementById('luma-cs-login');
-  if (loginBtn) loginBtn.textContent = (prov === 'onedrive' ? 'Sign in with Microsoft' : 'Sign in with Google');
+  if (loginBtn) loginBtn.textContent = (prov === 'onedrive' ? t('Sign in with Microsoft') : t('Sign in with Google'));
   var useBtn = document.getElementById('luma-cs-use') as HTMLElement | null;
   if (useBtn) {
     var tokens = (_cloudsaveStatus && _cloudsaveStatus.tokensAvailable) || {};
     var active = _cloudsaveStatus ? _cloudsaveStatus.provider : '';
     var show = !!tokens[prov] && active !== prov;
     useBtn.style.display = show ? '' : 'none';
-    if (show) useBtn.textContent = 'Use ' + (CS_PROVIDER_NAMES[prov] || prov);
+    if (show) useBtn.textContent = t('Use') + ' ' + (CS_PROVIDER_NAMES[prov] || prov);
   }
 }
 
@@ -2076,14 +2076,14 @@ function applyCloudSaveStatus(s: any): void {
   var pl = document.getElementById('luma-cs-provider-line');
   if (pl) {
     if (!s.provider) pl.textContent = t('No provider configured');
-    else if (s.provider === 'folder') pl.textContent = s.syncPath || 'Local folder';
-    else pl.textContent = provName + (s.loggedIn ? ' \u00b7 ' + (s.accountId || '') : ' \u00b7 not signed in');
+    else if (s.provider === 'folder') pl.textContent = s.syncPath || t('Local folder');
+    else pl.textContent = provName + (s.loggedIn ? ' \u00b7 ' + (s.accountId || '') : ' \u00b7 ' + t('not signed in'));
   }
 
   var badge = document.getElementById('luma-cs-signed-badge');
   if (badge) {
     if (s.loggedIn) {
-      badge.textContent = s.appsSynced + ' game' + (s.appsSynced === 1 ? '' : 's');
+      badge.textContent = s.appsSynced + ' ' + (s.appsSynced === 1 ? t('game') : t('games'));
       badge.style.background = 'rgba(100,200,130,.15)';
       badge.style.color = '#64c882';
     } else {
@@ -2140,7 +2140,7 @@ function applyCloudSaveStatus(s: any): void {
   if (tgPt) tgPt.classList.toggle('on', !!(s.statsSync && s.statsSync.playtime));
 
   var countEl = document.getElementById('luma-cs-count');
-  if (countEl) countEl.textContent = s.installed ? (s.appsSynced + ' game' + (s.appsSynced === 1 ? '' : 's')) : '';
+  if (countEl) countEl.textContent = s.installed ? (s.appsSynced + ' ' + (s.appsSynced === 1 ? t('game') : t('games'))) : '';
 }
 
 function loadCloudSaveStatus(): void {
@@ -2182,16 +2182,16 @@ function paintCloudSaveGames(): void {
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     var csCatRow = catalogRow(f.appId);
-    var csBadges = (csCatRow && csCatRow.installed) ? ' \u00b7 <span style="color:#64c882;">Installed</span>' : '';
+    var csBadges = (csCatRow && csCatRow.installed) ? ' \u00b7 <span style="color:#64c882;">' + t('Installed') + '</span>' : '';
     h += '<div class="luma-stat-card" style="margin-bottom:6px;padding:10px;display:flex;align-items:center;gap:10px;">';
     h += gameArtHtml(f.appId, svgBox());
     h += '<div style="flex:1;min-width:0;">';
     h += '<div style="font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(f.name || 'App ' + f.appId) + '</div>';
     h += '<div style="font-size:10px;color:#8f98a0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">';
-    h += 'CN ' + esc(String(f.cn || '0')) + ' \u00b7 ' + (f.fileCount || 0) + ' file' + ((f.fileCount || 0) === 1 ? '' : 's') +
+    h += 'CN ' + esc(String(f.cn || '0')) + ' \u00b7 ' + (f.fileCount || 0) + ' ' + ((f.fileCount || 0) === 1 ? t('file') : t('files')) +
          ' \u00b7 ' + formatBytes(f.sizeBytes || 0) + (f.modified ? ' \u00b7 ' + formatTimeAgo(f.modified) : '') + csBadges;
     h += '</div></div>';
-    h += '<button class="luma-sidebar-btn secondary" data-cs-delete="' + esc(String(f.appId)) + '" data-cs-name="' + esc(f.name || '') + '" style="padding:3px 8px;font-size:10px;flex-shrink:0;">Delete</button>';
+    h += '<button class="luma-sidebar-btn secondary" data-cs-delete="' + esc(String(f.appId)) + '" data-cs-name="' + esc(f.name || '') + '" style="padding:3px 8px;font-size:10px;flex-shrink:0;">' + t('Delete') + '</button>';
     h += '</div>';
   }
   listEl.innerHTML = h;
@@ -2228,9 +2228,9 @@ function renderCloudsaveTab(container: HTMLElement) {
   // Not installed
   html += '<div id="luma-cs-notinstalled" style="display:none;">';
   html += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;">';
-  html += '<div style="font-size:13px;font-weight:600;color:#fff;">Cloud Redirect is not installed</div>';
-  html += '<div style="font-size:10px;color:#8f98a0;">Cloud save sync runs inside Steam through the Cloud Redirect DLL. Install it to back up your saves to the cloud.</div>';
-  html += '<div style="display:flex;align-items:center;gap:8px;"><button class="luma-sidebar-btn primary" id="luma-cs-install">Install Cloud Redirect</button>';
+  html += '<div style="font-size:13px;font-weight:600;color:#fff;">' + t('Cloud Redirect is not installed') + '</div>';
+  html += '<div style="font-size:10px;color:#8f98a0;">' + t('Cloud save sync runs inside Steam through the Cloud Redirect DLL. Install it to back up your saves to the cloud.') + '</div>';
+  html += '<div style="display:flex;align-items:center;gap:8px;"><button class="luma-sidebar-btn primary" id="luma-cs-install">' + t('Install Cloud Redirect') + '</button>';
   html += '<span id="luma-cs-install-status" style="font-size:10px;color:#8f98a0;"></span></div>';
   html += '</div></div>';
 
@@ -2245,23 +2245,23 @@ function renderCloudsaveTab(container: HTMLElement) {
   html += '</div>';
   html += '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;">';
   html += '<span id="luma-cs-signed-badge" style="padding:2px 7px;border-radius:6px;font-size:9px;font-weight:700;background:rgba(255,255,255,.06);color:#8f98a0;">\u2014</span>';
-  html += '<button class="luma-sidebar-btn secondary" id="luma-cs-logout" style="display:none;padding:3px 8px;font-size:10px;">Sign out</button>';
+  html += '<button class="luma-sidebar-btn secondary" id="luma-cs-logout" style="display:none;padding:3px 8px;font-size:10px;">' + t('Sign out') + '</button>';
   html += '</div></div>';
 
   // Provider selector + panes
   html += '<div style="margin-top:10px;">';
-  html += '<div style="font-size:10px;color:#8f98a0;margin-bottom:4px;">Storage provider</div>';
+  html += '<div style="font-size:10px;color:#8f98a0;margin-bottom:4px;">' + t('Storage provider') + '</div>';
   html += '<select id="luma-cs-provider" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 8px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;margin-bottom:8px;">';
   html += '<option value="gdrive">Google Drive</option>';
   html += '<option value="onedrive">Microsoft OneDrive</option>';
   html += '<option value="r2">Cloudflare R2 (S3)</option>';
   html += '<option value="s3">S3-Compatible</option>';
-  html += '<option value="folder">Local Folder</option>';
+  html += '<option value="folder">' + t('Local Folder') + '</option>';
   html += '</select>';
 
   html += '<div id="luma-cs-pane-oauth" style="display:none;">';
   html += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
-  html += '<button class="luma-sidebar-btn primary" id="luma-cs-login">Sign in with Google</button>';
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-login">' + t('Sign in with Google') + '</button>';
   html += '<button class="luma-sidebar-btn secondary" id="luma-cs-use" style="display:none;"></button>';
   html += '</div>';
   html += '<div id="luma-cs-authlog" style="display:none;margin-top:8px;max-height:110px;overflow-y:auto;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.06);border-radius:6px;padding:6px 8px;font-size:9px;line-height:1.5;color:#8f98a0;font-family:Consolas,monospace;white-space:pre-wrap;word-break:break-word;"></div>';
@@ -2274,7 +2274,7 @@ function renderCloudsaveTab(container: HTMLElement) {
   html += cloudSaveField('luma-cs-r2-bucket', 'Bucket', 'text', 'Saved \u2014 leave blank to keep');
   html += cloudSaveField('luma-cs-r2-prefix', 'Key Prefix (optional)', 'text', '');
   html += cloudSaveField('luma-cs-r2-endpoint', 'Endpoint (optional)', 'text', '');
-  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-r2">Save R2</button>';
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-r2">' + t('Save R2') + '</button>';
   html += '</div>';
 
   html += '<div id="luma-cs-pane-s3" style="display:none;">';
@@ -2284,12 +2284,12 @@ function renderCloudsaveTab(container: HTMLElement) {
   html += cloudSaveField('luma-cs-s3-endpoint', 'Endpoint', 'text', 'Saved \u2014 leave blank to keep');
   html += cloudSaveField('luma-cs-s3-region', 'Region', 'text', 'auto');
   html += cloudSaveField('luma-cs-s3-prefix', 'Key Prefix (optional)', 'text', '');
-  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-s3">Save S3</button>';
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-s3">' + t('Save S3') + '</button>';
   html += '</div>';
 
   html += '<div id="luma-cs-pane-folder" style="display:none;">';
   html += cloudSaveField('luma-cs-folder-path', 'Folder path', 'text', 'D:\\CloudSaves');
-  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-folder">Save Folder</button>';
+  html += '<button class="luma-sidebar-btn primary" id="luma-cs-save-folder">' + t('Save Folder') + '</button>';
   html += '</div>';
 
   html += '<div id="luma-cs-msg" style="display:none;margin-top:6px;font-size:10px;"></div>';
@@ -2299,21 +2299,21 @@ function renderCloudsaveTab(container: HTMLElement) {
   html += '<div style="margin-top:12px;">';
   html += '<div class="luma-sidebar-section-title">' + t('Stats Sync') + '</div>';
   html += '<div class="luma-provider-row" style="padding:8px 10px;margin-bottom:6px;"><div style="flex:1;min-width:0;">';
-  html += '<div style="font-size:11px;color:#c7d5e0;">Achievements</div>';
-  html += '<div style="font-size:9px;color:#8f98a0;">Sync achievement progress with the cloud</div>';
+  html += '<div style="font-size:11px;color:#c7d5e0;">' + t('Achievements') + '</div>';
+  html += '<div style="font-size:9px;color:#8f98a0;">' + t('Sync achievement progress with the cloud') + '</div>';
   html += '</div><button class="luma-toggle" id="luma-cs-tg-ach"></button></div>';
   html += '<div class="luma-provider-row" style="padding:8px 10px;"><div style="flex:1;min-width:0;">';
-  html += '<div style="font-size:11px;color:#c7d5e0;">Playtime</div>';
-  html += '<div style="font-size:9px;color:#8f98a0;">Sync playtime counters with the cloud</div>';
+  html += '<div style="font-size:11px;color:#c7d5e0;">' + t('Playtime') + '</div>';
+  html += '<div style="font-size:9px;color:#8f98a0;">' + t('Sync playtime counters with the cloud') + '</div>';
   html += '</div><button class="luma-toggle" id="luma-cs-tg-pt"></button></div>';
-  html += '<div style="font-size:9px;color:#8f98a0;">Changes apply after restarting Steam.</div>';
+  html += '<div style="font-size:9px;color:#8f98a0;">' + t('Changes apply after restarting Steam.') + '</div>';
   html += '</div>';
 
   // Synced games
   html += '<div style="margin-top:12px;flex:1;display:flex;flex-direction:column;min-height:0;">';
-  html += '<div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><span>Synced Games</span><span id="luma-cs-count" style="font-size:10px;color:#8f98a0;font-weight:400;"></span></div>';
-  html += '<input id="luma-cs-search" type="text" placeholder="Search\u2026" value="' + esc(_cloudsaveQuery) + '" style="flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;margin-bottom:8px;" />';
-  html += '<div id="luma-cs-list" style="flex:1;min-height:0;overflow-y:auto;padding-right:4px;"><div style="font-size:11px;color:#8f98a0;padding:8px 0;">Loading\u2026</div></div>';
+  html += '<div class="luma-sidebar-section-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;"><span>' + t('Synced Games') + '</span><span id="luma-cs-count" style="font-size:10px;color:#8f98a0;font-weight:400;"></span></div>';
+  html += '<input id="luma-cs-search" type="text" placeholder="' + t('Search\u2026') + '" value="' + esc(_cloudsaveQuery) + '" style="flex-shrink:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;margin-bottom:8px;" />';
+  html += '<div id="luma-cs-list" style="flex:1;min-height:0;overflow-y:auto;padding-right:4px;"><div style="font-size:11px;color:#8f98a0;padding:8px 0;">' + t('Loading\u2026') + '</div></div>';
   html += '</div>';
 
   html += '</div>'; // installed
@@ -2356,9 +2356,9 @@ function renderCloudsaveTab(container: HTMLElement) {
         if (!d || !d.ok) {
           loginBtn.removeAttribute('disabled');
           loginBtn.style.opacity = '';
-          cloudSaveShowMsg((d && d.message) || 'Sign-in could not be started', false);
+          cloudSaveShowMsg((d && d.message) || t('Sign-in could not be started'), false);
         } else {
-          cloudSaveShowMsg('Complete the sign-in in your browser\u2026', true);
+          cloudSaveShowMsg(t('Complete the sign-in in your browser\u2026'), true);
           loadCloudSaveStatus();
         }
       });
@@ -2374,10 +2374,10 @@ function renderCloudsaveTab(container: HTMLElement) {
         useBtn.removeAttribute('disabled');
         if (d && d.ok) {
           _cloudsaveSelectTouched = false;
-          cloudSaveShowMsg('Provider activated', true);
+          cloudSaveShowMsg(t('Provider activated'), true);
           loadCloudSaveStatus();
         } else {
-          cloudSaveShowMsg((d && d.message) || 'Could not activate provider', false);
+          cloudSaveShowMsg((d && d.message) || t('Could not activate provider'), false);
         }
       });
     });
@@ -2396,10 +2396,10 @@ function renderCloudsaveTab(container: HTMLElement) {
         btn.style.opacity = '';
         if (d && d.ok) {
           _cloudsaveSelectTouched = false;
-          cloudSaveShowMsg(label + ' saved', true);
+          cloudSaveShowMsg(label + ' ' + t('saved'), true);
           loadCloudSaveStatus();
         } else {
-          cloudSaveShowMsg((d && d.message) || 'Save failed', false);
+          cloudSaveShowMsg((d && d.message) || t('Save failed'), false);
         }
       });
     });
@@ -2446,7 +2446,7 @@ function renderCloudsaveTab(container: HTMLElement) {
       logoutBtn.setAttribute('disabled', 'true');
       cloudSavePost(cloudSaveLogoutUrl(), {}, function(d) {
         logoutBtn.removeAttribute('disabled');
-        cloudSaveShowMsg((d && d.message) || (d && d.ok ? 'Signed out' : 'Sign-out failed'), !!(d && d.ok));
+        cloudSaveShowMsg((d && d.message) || (d && d.ok ? t('Signed out') : t('Sign-out failed')), !!(d && d.ok));
         loadCloudSaveStatus();
       });
     });
@@ -2460,9 +2460,9 @@ function renderCloudsaveTab(container: HTMLElement) {
       cloudSavePost(cloudSaveStatsSyncUrl(), { achievements: on }, function(d) {
         if (!d || !d.ok) {
           tgAch.classList.toggle('on', !on);
-          cloudSaveShowMsg((d && d.message) || 'Could not save stats setting', false);
+          cloudSaveShowMsg((d && d.message) || t('Could not save stats setting'), false);
         } else {
-          cloudSaveShowMsg('Saved \u2014 restart Steam to apply', true);
+          cloudSaveShowMsg(t('Saved \u2014 restart Steam to apply'), true);
           loadCloudSaveStatus();
         }
       });
@@ -2477,9 +2477,9 @@ function renderCloudsaveTab(container: HTMLElement) {
       cloudSavePost(cloudSaveStatsSyncUrl(), { playtime: on }, function(d) {
         if (!d || !d.ok) {
           tgPt.classList.toggle('on', !on);
-          cloudSaveShowMsg((d && d.message) || 'Could not save stats setting', false);
+          cloudSaveShowMsg((d && d.message) || t('Could not save stats setting'), false);
         } else {
-          cloudSaveShowMsg('Saved \u2014 restart Steam to apply', true);
+          cloudSaveShowMsg(t('Saved \u2014 restart Steam to apply'), true);
           loadCloudSaveStatus();
         }
       });
@@ -2518,7 +2518,7 @@ function renderCloudsaveTab(container: HTMLElement) {
             loadCloudSaveApps();
           })
           .catch(function() {
-            cloudSaveShowMsg('Delete request failed', false);
+            cloudSaveShowMsg(t('Delete request failed'), false);
             paintCloudSaveGames();
           });
         return;

@@ -4,6 +4,7 @@ import { ST } from '../ui/styles';
 import { ensureKeyframes } from '../ui/styles';
 import { extractAppId, findActionContainer, localStatusUrl, isLibrarySurface } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
+import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -71,8 +72,8 @@ export function updateFixesButton(appId: string): void {
     btn.className = 'luma-ssh-fixes-button';
     btn.setAttribute(BTN_MARKER_ATTR, BTN_MARKER_VAL);
     btn.setAttribute(BTN_APPID_ATTR, appId);
-    btn.setAttribute('aria-label', 'Game fixes for app ' + appId);
-    btn.title = 'Apply SmokeAPI, Steamless, Goldberg or Online-Fix';
+    btn.setAttribute('aria-label', t('Game fixes for app') + ' ' + appId);
+    btn.title = t('Apply SmokeAPI, Steamless, Goldberg or Online-Fix');
     btn.setAttribute('style',
       'display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:8px 14px;cursor:pointer;' +
       'border:1px solid rgba(255,180,60,.35);border-radius:4px;font-family:inherit;font-size:13px;font-weight:700;' +
@@ -84,7 +85,7 @@ export function updateFixesButton(appId: string): void {
       '<path d="M10.5 1.5l4 4-7 7H3.5v-4l7-7z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
       '<path d="M9 3l4 4" stroke="currentColor" stroke-width="1.4"/>' +
       '<path d="M2 14h12" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>' +
-      '</svg><span>FIXES</span>';
+      '</svg><span>' + t('FIXES') + '</span>';
 
     var parent = mainBtn.parentNode;
     if (parent) {
@@ -161,7 +162,7 @@ export function applyInstalledState(appId: string): void {
 // active so the user can re-download the Lua via the source modal, and FIXES
 // remains available because the game content is on disk.
 export function applyInstalledNoLuaState(appId: string): void {
-  setButtonState(appId, ST.btn, svgDownload(14, 14) + '<span>ADD VIA LUMAFORGE</span>', false);
+  setButtonState(appId, ST.btn, svgDownload(14, 14) + '<span>' + t('ADD VIA LUMAFORGE') + '</span>', false);
   setButtonLumaState(appId, 'installed-no-lua');
   updateFixesButton(appId);
   console.log('[LUMA_INJECT] App', appId, 'content installed, no Lua (ADD VIA LUMAFORGE)');
@@ -267,7 +268,7 @@ export function handleLocalStatusResult(appId: string, err: any, data: any): voi
         return;
       }
       console.error('[LUMA_INJECT] Bridge error for', appId, ':', err.name || err.message || err);
-      setButtonState(appId, ST.btn, svgDownload() + '<span>BRIDGE ERROR</span>', false);
+      setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('BRIDGE ERROR') + '</span>', false);
       setButtonLumaState(appId, 'bridge-error');
       scheduleBridgeRecovery(appId);
       return;
@@ -276,7 +277,7 @@ export function handleLocalStatusResult(appId: string, err: any, data: any): voi
     if (!data || !data.ok) {
       var detail = data ? (data.message || 'invalid') : 'no data';
       console.error('[LUMA_INJECT] Invalid status for', appId, ':', detail);
-      setButtonState(appId, ST.btn, svgDownload() + '<span>BRIDGE ERROR</span>', false);
+      setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('BRIDGE ERROR') + '</span>', false);
       setButtonLumaState(appId, 'bridge-error');
       scheduleBridgeRecovery(appId);
       return;
@@ -305,7 +306,7 @@ export function handleLocalStatusResult(appId: string, err: any, data: any): voi
       applyInLibraryState(appId);
       removeFixesButton();
     } else {
-      setButtonState(appId, ST.btn, svgDownload() + '<span>ADD VIA LUMAFORGE</span>', false);
+      setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('ADD VIA LUMAFORGE') + '</span>', false);
       setButtonLumaState(appId, 'ready');
       removeFixesButton();
     }
@@ -358,7 +359,7 @@ export function checkLocalStatus(appId: string, cb: (err: any, data: any, appId:
         if (!btn || btn.getAttribute(BTN_APPID_ATTR) !== appId) return false;
 
         if (attemptNum <= 3) {
-          setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>CHECKING\u2026</span>', true);
+          setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('CHECKING\u2026') + '</span>', true);
           setButtonLumaState(appId, 'checking');
         }
         return true;
@@ -424,7 +425,7 @@ export function ensureLumaButtonExists(): void {
         return;
       }
       console.log('[LUMA_WATCHER] Retrying for AppID:', appId, '(was:', existingState + ')');
-      setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>CHECKING\u2026</span>', true);
+      setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('CHECKING\u2026') + '</span>', true);
       setButtonLumaState(appId, 'checking');
     } else {
       if (existing) existing.remove();
@@ -444,11 +445,11 @@ export function ensureLumaButtonExists(): void {
       btn.setAttribute(BTN_MARKER_ATTR, BTN_MARKER_VAL);
       btn.setAttribute(BTN_APPID_ATTR, appId);
       btn.setAttribute(BTN_STATE_ATTR, 'checking');
-      btn.setAttribute('aria-label', 'Add app ' + appId + ' via LumaForge');
-      btn.title = 'Select a download source for app ' + appId;
+      btn.setAttribute('aria-label', t('Add app') + ' ' + appId + ' ' + t('via LumaForge'));
+      btn.title = t('Select a download source for app') + ' ' + appId;
       btn.setAttribute('style', ST.btn + 'opacity:.7;pointer-events:none;');
       btn.setAttribute('aria-disabled', 'true');
-      btn.innerHTML = svgSpinner() + '<span>CHECKING\u2026</span>';
+      btn.innerHTML = svgSpinner() + '<span>' + t('CHECKING\u2026') + '</span>';
 
       var parent = container.parentNode;
       if (parent) {

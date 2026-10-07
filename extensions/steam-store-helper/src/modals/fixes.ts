@@ -272,7 +272,7 @@ function loadFixesData(appId: string): void {
         '<div style="' + ST.errorTitle + '">' + t('Failed to Load Fixes') + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
-        '<button type="button" id="luma-fixes-retry" style="' + ST.retryBtn + '">TRY AGAIN</button>' +
+        '<button type="button" id="luma-fixes-retry" style="' + ST.retryBtn + '">' + t('TRY AGAIN') + '</button>' +
         '</div>' +
         '</div>';
       var retryBtn = document.getElementById('luma-fixes-retry');
@@ -343,7 +343,7 @@ function renderFixes(appId: string): void {
   for (var i = 0; i < ROW_DEFS.length; i++) {
     var def = ROW_DEFS[i];
     if (!def.available(info, status)) continue;
-    html += renderRow(appId, def.key, def.label, def.desc, status.applied ? !!status.applied[def.appliedKey] : false,
+    html += renderRow(appId, def.key, def.label, t(def.desc), status.applied ? !!status.applied[def.appliedKey] : false,
       def.toolId, def.installedKey, def.icon(), null, ms);
     rowsShown++;
   }
@@ -355,7 +355,7 @@ function renderFixes(appId: string): void {
     var catApplied = !!(status.applied && status.applied[fixType]);
     var providerLabel = entry.provider === 'rockstar' ? 'Rockstar Games' : 'Voices38';
     html += renderRow(appId, 'catalog:' + entry.id, escapeHtml(entry.title || fixType),
-      'Catalog fix \u00b7 ' + escapeHtml(providerLabel) + (entry.fileSizeHuman ? ' \u00b7 ' + escapeHtml(entry.fileSizeHuman) : ''),
+      t('Catalog fix') + ' \u00b7 ' + escapeHtml(providerLabel) + (entry.fileSizeHuman ? ' \u00b7 ' + escapeHtml(entry.fileSizeHuman) : ''),
       catApplied, null, null, svgBox(), { downloadUrl: entry.downloadUrl, fixType: fixType }, ms);
     rowsShown++;
   }
@@ -409,7 +409,7 @@ function renderRow(
   s += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
   s += '<span style="font-size:13px;font-weight:700;color:#fff;">' + label + '</span>';
   if (applied) {
-    s += '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(46,160,67,.15);color:#64c882;">' + svgCheckSmall() + 'APPLIED</span>';
+    s += '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(46,160,67,.15);color:#64c882;">' + svgCheckSmall() + t('APPLIED') + '</span>';
   }
   if (toolId && !installed) {
     s += '<span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:rgba(255,180,60,.12);color:#ffb43c;">' + t('TOOL NEEDED') + '</span>';
