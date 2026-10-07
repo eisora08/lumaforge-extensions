@@ -302,6 +302,48 @@ export function ensureKeyframes(): void {
       'background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);' +
       '}' +
 
+      // ── Steam-restart dialog (Downloads tab) ──
+      '.luma-sr-dialog{' +
+      'background:var(--luma-ssh-bg-panel,#1b2838);' +
+      'border:1px solid rgba(255,255,255,.12);border-radius:12px;' +
+      'padding:28px 24px 20px;max-width:380px;width:90%;text-align:center;' +
+      'box-shadow:0 8px 32px rgba(0,0,0,.5);' +
+      '}' +
+      '.luma-sr-actions{' +
+      'display:flex;gap:8px;justify-content:center;flex-wrap:wrap;' +
+      '}' +
+      '.luma-sr-btn{' +
+      'display:inline-flex;align-items:center;justify-content:center;gap:6px;' +
+      'padding:10px 18px;border-radius:8px;cursor:pointer;' +
+      'font-family:inherit;font-size:13px;font-weight:600;' +
+      'transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease,filter .15s ease;' +
+      '}' +
+      '.luma-sr-btn:active{transform:translateY(1px);}' +
+      '.luma-sr-btn[disabled]{opacity:.75;cursor:default;transform:none;}' +
+      '.luma-sr-btn--primary{' +
+      'border:none;color:#fff;' +
+      'background:linear-gradient(180deg,var(--luma-ssh-success,#2ea043) 0%,#24923f 100%);' +
+      'box-shadow:0 0 12px rgba(46,160,67,.25);' +
+      '}' +
+      '.luma-sr-btn--primary:hover{' +
+      'filter:brightness(1.08);box-shadow:0 0 16px rgba(46,160,67,.4);' +
+      '}' +
+      '.luma-sr-btn--accent{' +
+      'border:none;color:#fff;background:var(--luma-ssh-accent,#66c0ff);' +
+      'box-shadow:0 0 12px var(--luma-ssh-accent-glow,rgba(102,192,255,.3));' +
+      '}' +
+      '.luma-sr-btn--accent:hover{' +
+      'filter:brightness(1.08);' +
+      'box-shadow:0 0 16px var(--luma-ssh-accent-glow,rgba(102,192,255,.45));' +
+      '}' +
+      '.luma-sr-btn--ghost{' +
+      'border:1px solid rgba(255,255,255,.15);background:transparent;' +
+      'color:var(--luma-ssh-text,#c7d5e0);' +
+      '}' +
+      '.luma-sr-btn--ghost:hover{' +
+      'background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.28);color:#fff;' +
+      '}' +
+
       // ── Depot card styles ──
       '.luma-depot-card{' +
       'display:grid;' +

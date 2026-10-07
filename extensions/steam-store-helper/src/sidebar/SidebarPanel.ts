@@ -42,17 +42,28 @@ var _cloudsaveQuery = '';
 var _cloudsaveProviderSel = '';
 var _cloudsaveSelectTouched = false;
 
+// Bridge history mixes proxy-created depot completions with extension-pushed
+// source/package entries (toBridgeEntry drops the type field), so the local
+// history - which keeps type - is the discriminator for the restart prompt.
+function isSourceHistoryId(id: string): boolean {
+  var local = state.downloadHistory || [];
+  for (var i = 0; i < local.length; i++) {
+    if (String(local[i].id) === id && local[i].type === 'source') return true;
+  }
+  return false;
+}
+
 function showSteamRestartDialog(appId: string, gameName: string): void {
   var overlay = document.createElement('div');
   overlay.id = 'luma-steam-restart-overlay';
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);';
 
   var restartBtnHtml = IS_LINUX
-    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:var(--luma-ssh-accent,#66c0ff);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' ' + t('Restart Steam') + '</button>'
+    ? '<button type="button" id="luma-sr-restart" class="luma-sr-btn luma-sr-btn--accent">' + svgRefresh() + ' ' + t('Restart Steam') + '</button>'
     : '';
 
   overlay.innerHTML =
-    '<div style="background:var(--luma-ssh-bg-panel,#1b2838);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:28px 24px 20px;max-width:380px;width:90%;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.5);">' +
+    '<div class="luma-sr-dialog">' +
     '<div style="margin-bottom:12px;">' + svgCheck(32, 32) + '</div>' +
     '<div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:6px;">' + t('Content Downloaded') + '</div>' +
     '<div style="font-size:12px;color:#8f98a0;margin-bottom:4px;">' + escapeHtml(gameName) + '</div>' +
@@ -60,10 +71,10 @@ function showSteamRestartDialog(appId: string, gameName: string): void {
     (IS_LINUX
       ? '<div style="margin-bottom:16px;padding:10px 14px;border-radius:8px;background:var(--luma-ssh-a08,rgba(102,192,255,.08));border:1px solid var(--luma-ssh-a15,rgba(102,192,255,.15));font-size:12px;color:#c7d5e0;">' + t('Steam needs to be restarted to detect the new game.') + '<br>' + t('Would you like to restart now?') + '</div>'
       : '') +
-    '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+    '<div class="luma-sr-actions">' +
     restartBtnHtml +
-    '<button type="button" id="luma-sr-library" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#c7d5e0;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgLibrary() + ' ' + t('View in library') + '</button>' +
-    '<button type="button" id="luma-sr-close" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8f98a0;font-size:13px;cursor:pointer;">' + (IS_LINUX ? t('Restart later') : t('Close')) + '</button>' +
+    '<button type="button" id="luma-sr-library" class="luma-sr-btn luma-sr-btn--primary">' + svgLibrary() + ' ' + t('View in library') + '</button>' +
+    '<button type="button" id="luma-sr-close" class="luma-sr-btn luma-sr-btn--ghost">' + (IS_LINUX ? t('Restart later') : t('Close')) + '</button>' +
     '</div>' +
     '</div>';
 
@@ -1114,7 +1125,11 @@ function renderDownloadsTab(container: HTMLElement) {
             if (nowSec - completedAt < 30) {
               _shownDepotCompletions[h.id] = true;
               applyInLibraryState(String(h.appId));
-              showSteamRestartDialog(String(h.appId), h.gameName || 'App ' + h.appId);
+              // The Steam-restart prompt is only for DepotDownloader content:
+              // source/package pushes (Add via LumaForge) get their own dialog
+              if (!isSourceHistoryId(String(h.id))) {
+                showSteamRestartDialog(String(h.appId), h.gameName || 'App ' + h.appId);
+              }
             }
           }
         }
