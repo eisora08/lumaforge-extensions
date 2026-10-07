@@ -277,7 +277,7 @@ export function renderDepotList(appId: string): void {
   // Location dropdown
   html += '<div style="margin:12px 0;padding:12px;border-radius:8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);">';
   html += '<div style="font-size:11px;font-weight:600;color:#8f98a0;margin-bottom:6px;">' + t('Download Location') + '</div>';
-  html += '<select id="luma-depot-location" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:#1b2838;color:#fff;font-size:12px;cursor:pointer;">';
+  html += '<select id="luma-depot-location" class="luma-ssh-select" style="width:100%;padding:8px 12px;border-radius:6px;border:1px solid rgba(255,255,255,.1);background:#1b2838;color:#fff;font-size:12px;cursor:pointer;">';
   if (_steamLibraryFolders && _steamLibraryFolders.length > 0) {
     for (var fi = 0; fi < _steamLibraryFolders.length; fi++) {
       var folder = _steamLibraryFolders[fi];

@@ -248,7 +248,7 @@ function renderDashboardTab(container: HTMLElement) {
   html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;"><div class="luma-sidebar-section-title" id="luma-dash-lua-title" style="flex-shrink:0;">' + t('Lua Scripts') + '</div>';
   html += '<div style="display:flex;gap:6px;margin-bottom:8px;flex-shrink:0;">';
   html += '<input id="luma-lua-search" type="text" placeholder="' + t('Search…') + '" value="' + esc(_luaQuery) + '" style="flex:1 1 auto;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 9px;color:#fff;font-size:11px;outline:none;" />';
-  html += '<select id="luma-lua-sort" style="flex:0 0 106px;width:106px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 6px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;">';
+  html += '<select id="luma-lua-sort" class="luma-ssh-select" style="flex:0 0 106px;width:106px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 6px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;">';
   html += '<optgroup label="' + t('Show') + '">';
   html += '<option value="all"' + (_luaSelectVal === 'all' ? ' selected' : '') + '>' + t('All') + '</option>';
   html += '<option value="installed"' + (_luaSelectVal === 'installed' ? ' selected' : '') + '>' + t('Installed') + '</option>';
@@ -2251,7 +2251,7 @@ function renderCloudsaveTab(container: HTMLElement) {
   // Provider selector + panes
   html += '<div style="margin-top:10px;">';
   html += '<div style="font-size:10px;color:#8f98a0;margin-bottom:4px;">' + t('Storage provider') + '</div>';
-  html += '<select id="luma-cs-provider" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 8px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;margin-bottom:8px;">';
+  html += '<select id="luma-cs-provider" class="luma-ssh-select" style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:7px 8px;color:#c7d5e0;font-size:11px;cursor:pointer;outline:none;margin-bottom:8px;">';
   html += '<option value="gdrive">Google Drive</option>';
   html += '<option value="onedrive">Microsoft OneDrive</option>';
   html += '<option value="r2">Cloudflare R2 (S3)</option>';

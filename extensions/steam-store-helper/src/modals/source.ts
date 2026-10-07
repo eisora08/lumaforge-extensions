@@ -1204,7 +1204,7 @@ export function showDownloadSuccess(appId: string, requestId: string, gameName?:
       '<div style="' + ST.successDetail + '">' + t('The package has been downloaded and installed to your Steam library.') + '</div>' +
       cardHtml +
       '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
-      '<button type="button" id="luma-btn-open-library" class="luma-ssh-success-primary">' + svgLibrary() + '<span>' + t('View in library') + '</span><span aria-hidden="true">\u2192</span></button>' +
+      '<button type="button" id="luma-btn-open-library" class="luma-ssh-success-primary">' + svgLibrary() + '<span>' + t('View in library') + '</span><span class="luma-ssh-success-arrow" aria-hidden="true">\u2192</span></button>' +
       depotBtn +
       '<button type="button" id="luma-btn-continue" class="luma-ssh-success-secondary">' + t('Continue browsing') + '</button>' +
       '</div>' +

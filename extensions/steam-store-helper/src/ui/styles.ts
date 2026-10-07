@@ -65,6 +65,24 @@ export function ensureKeyframes(): void {
       'cursor:default!important;' +
       '}' +
 
+      // Fixes button (store page, inline amber style - needs !important)
+      '.luma-ssh-fixes-button:hover{' +
+      'background:linear-gradient(to right,rgba(255,150,40,.36),rgba(255,180,60,.26))!important;' +
+      'border-color:rgba(255,196,90,.65)!important;' +
+      'color:#ffd08a!important;' +
+      'box-shadow:0 0 12px rgba(255,180,60,.32)!important;' +
+      '}' +
+      '.luma-ssh-fixes-button:active{' +
+      'transform:translateY(1px)!important;' +
+      '}' +
+
+      // Dark native dropdowns (the popup list is OS/UA-rendered, so the
+      // dark inline background on <select> alone leaves a white popup)
+      '.luma-ssh-select{color-scheme:dark;}' +
+      '.luma-ssh-select option,.luma-ssh-select optgroup{' +
+      'background-color:#101b29;color:#c7d5e0;' +
+      '}' +
+
       // ── Modal panel box-sizing ──
       '.luma-ssh-modal-panel,.luma-ssh-modal-panel *,' +
       '.luma-ssh-modal-panel *::before,.luma-ssh-modal-panel *::after{' +
@@ -253,6 +271,12 @@ export function ensureKeyframes(): void {
       '}' +
       '.luma-ssh-success-primary:hover{' +
       'filter:brightness(1.08);box-shadow:0 0 16px rgba(46,160,67,.4);' +
+      '}' +
+      '.luma-ssh-success-arrow{' +
+      'display:inline-block;transition:transform .15s ease;' +
+      '}' +
+      '.luma-ssh-success-primary:hover .luma-ssh-success-arrow{' +
+      'transform:translateX(4px);' +
       '}' +
       '.luma-ssh-success-depot{' +
       'display:flex;align-items:center;justify-content:center;gap:8px;' +
