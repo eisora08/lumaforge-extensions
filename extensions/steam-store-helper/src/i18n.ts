@@ -132,6 +132,7 @@ const ES: Record<string, string> = {
   'Invalid response from bridge': 'Respuesta no v\u00e1lida del puente',
   'Package available': 'Paquete disponible',
   'Package not available': 'Paquete no disponible',
+  Source: 'Fuente',
 
   // Manage menu (context submenu items)
   'Pin to Current Version': 'Fijar a versi\u00f3n actual',

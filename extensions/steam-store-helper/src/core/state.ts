@@ -100,7 +100,7 @@ interface State {
   // dashboard to refresh stats/lua cards; cleared when the dashboard unmounts.
   onDownloadSettled: (() => void) | null;
   // Source download modal poll
-  requestContext: { requestId: string; appId: string; sourceId: string } | null;
+  requestContext: { requestId: string; appId: string; sourceId: string; sourceLabel?: string; gameName?: string } | null;
   downloadPollSeq: number;
   downloadPollTimer: ReturnType<typeof setTimeout> | null;
   popstateHandler: (() => void) | null;

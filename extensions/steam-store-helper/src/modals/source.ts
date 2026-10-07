@@ -4,7 +4,7 @@ import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svg
 import { ST, dot } from '../ui/styles';
 import { resolveThemeColors } from '../ui/themeColor';
 import { t } from '../i18n';
-import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, steamKeysSettingsUrl } from '../ui/helpers';
+import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, bridgeUrl, steamKeysSettingsUrl } from '../ui/helpers';
 import { bridgeFetch } from '../api/bridge';
 import { setButtonState, setButtonLumaState } from '../ui/button';
 import { openDepotModal } from './depot';
@@ -38,6 +38,36 @@ export function closeModal(): void {
 // ---------------------------------------------------------------------------
 // Modal: build and show
 // ---------------------------------------------------------------------------
+
+// Minimal chrome (progress/success/error): hide header title, version,
+// settings and footer so the panel reads like a single-purpose dialog with
+// only the close X. Toggled via a class so pure CSS can do the hiding.
+function setModalMinimal(minimal: boolean): void {
+  try {
+    var panel = document.querySelector(
+      '[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"] .luma-ssh-modal-panel'
+    );
+    if (!panel) return;
+    if (minimal) panel.classList.add('luma-ssh-modal-minimal');
+    else panel.classList.remove('luma-ssh-modal-minimal');
+  } catch (e) { }
+}
+
+// Best-effort game name from the page hosting the modal (store page has
+// #appHubAppName; other surfaces fall back to the "Name on Steam" title).
+function readPageGameName(): string {
+  try {
+    var el = document.getElementById('appHubAppName');
+    if (el) {
+      var txt = (el.textContent || '').trim();
+      if (txt) return txt;
+    }
+    var m = (document.title || '').match(/^(.*?)\s+on Steam/);
+    if (m && m[1]) return m[1].trim();
+  } catch (e) { }
+  return '';
+}
+
 export function openSourceModal(appId: string): void {
   try {
     console.log('[LUMA_INJECT] Opening modal for AppID:', appId);
@@ -64,11 +94,14 @@ export function openSourceModal(appId: string): void {
     panel.addEventListener('click', function (e) { e.stopPropagation(); });
 
     var header = document.createElement('div');
+    header.setAttribute('class', 'luma-ssh-modal-header');
     header.setAttribute('style', ST.header);
     var hdrIcon = document.createElement('span');
+    hdrIcon.setAttribute('class', 'luma-ssh-modal-hdr-icon');
     hdrIcon.setAttribute('style', ST.headerIcon);
     hdrIcon.innerHTML = svgCloudDownload();
     var hdrTextWrap = document.createElement('div');
+    hdrTextWrap.setAttribute('class', 'luma-ssh-modal-hdr-text');
     hdrTextWrap.setAttribute('style', 'min-width:0;flex:1;');
     var hdrTitle = document.createElement('div');
     hdrTitle.id = titleId;
@@ -97,6 +130,7 @@ export function openSourceModal(appId: string): void {
     var headerRight = document.createElement('div');
     headerRight.setAttribute('style', 'display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;');
     var headerRightRow = document.createElement('div');
+    headerRightRow.setAttribute('class', 'luma-ssh-modal-hdr-meta');
     headerRightRow.setAttribute('style', 'display:flex;align-items:center;gap:6px;flex-shrink:0;');
 
     var settingsBtn = document.createElement('button');
@@ -131,6 +165,7 @@ export function openSourceModal(appId: string): void {
       '</div>';
 
     var footer = document.createElement('div');
+    footer.setAttribute('class', 'luma-ssh-modal-footer');
     footer.setAttribute('style', ST.footer);
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
@@ -799,7 +834,7 @@ export function renderSources(
 
       if (selectable) {
         card.addEventListener('click', function () {
-          handleSourceClick(card, appId, src.id);
+          handleSourceClick(card, appId, src.id, src.name || src.id);
         });
       }
 
@@ -828,7 +863,7 @@ export function renderSources(
 // ---------------------------------------------------------------------------
 // Modal: source click -> download with state machine
 // ---------------------------------------------------------------------------
-export function handleSourceClick(card: HTMLElement, appId: string, sourceId: string): void {
+export function handleSourceClick(card: HTMLElement, appId: string, sourceId: string, sourceLabel?: string): void {
   try {
     if (card.getAttribute('data-pending') === 'true') return;
     card.setAttribute('data-pending', 'true');
@@ -867,6 +902,8 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
           requestId: d.requestId,
           appId: appId,
           sourceId: sourceId,
+          sourceLabel: sourceLabel,
+          gameName: readPageGameName(),
         };
 
         // Also track in activeDownloads for sidebar
@@ -916,6 +953,7 @@ export function showDownloadProgress(appId: string, requestId: string, sourceId?
   try {
     var body = getModalBody();
     if (!body) return;
+    setModalMinimal(true);
 
     var title = sourceId === 'steamkeys' ? t('Generating\u2026') : t('Downloading\u2026');
     body.innerHTML =
@@ -1013,20 +1051,26 @@ export function startDownloadPoll(requestId: string, appId: string): void {
         if (d.status === 'completed') {
           var completedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          var okCtx = (state.requestContext && state.requestContext.requestId === requestId) ? state.requestContext : null;
+          var okName = okCtx ? okCtx.gameName : '';
           addHistoryEntry({
-            id: requestId, appId: appId, gameName: completedDl ? completedDl.gameName : undefined,
+            id: requestId, appId: appId,
+            gameName: (completedDl && completedDl.gameName) ? completedDl.gameName : (okName || undefined),
             type: 'source', status: 'completed', timestamp: Date.now(),
             progress: 100, bytesDownloaded: d.bytesDownloaded || d.bytesRead || 0, totalBytes: d.totalBytes || 0,
           });
-          showDownloadSuccess(appId, requestId);
+          showDownloadSuccess(appId, requestId, okName, okCtx ? okCtx.sourceLabel : '');
           notifySettled();
           return;
         }
         if (d.status === 'failed') {
           var failedDl = state.activeDownloads.find(function(j) { return j.requestId === requestId; });
           state.activeDownloads = state.activeDownloads.filter(function(j) { return j.requestId !== requestId; });
+          var failCtx = (state.requestContext && state.requestContext.requestId === requestId) ? state.requestContext : null;
+          var failName = failCtx ? failCtx.gameName : '';
           addHistoryEntry({
-            id: requestId, appId: appId, gameName: failedDl ? failedDl.gameName : undefined,
+            id: requestId, appId: appId,
+            gameName: (failedDl && failedDl.gameName) ? failedDl.gameName : (failName || undefined),
             type: 'source', status: 'failed', timestamp: Date.now(),
             progress: d.progress || 0, bytesDownloaded: d.bytesDownloaded || 0, totalBytes: d.totalBytes || 0,
           });
@@ -1126,7 +1170,7 @@ export function restartDownloadPoll(requestId: string, appId: string): void {
 // ---------------------------------------------------------------------------
 // Download success: show success state in modal
 // ---------------------------------------------------------------------------
-export function showDownloadSuccess(appId: string, requestId: string): void {
+export function showDownloadSuccess(appId: string, requestId: string, gameName?: string, sourceLabel?: string): void {
   try {
     // Button state must update even if the user closed the modal already.
     setButtonState(appId, ST.btnSuccess + 'cursor:default;', svgCheck() + '<span>' + t('Added to LumaForge') + '</span>', true);
@@ -1134,23 +1178,56 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
 
     var body = getModalBody();
     if (!body) return;
+    setModalMinimal(true);
+
+    var name = gameName || readPageGameName();
+    var cardHtml = '';
+    if (name || sourceLabel) {
+      cardHtml =
+        '<div class="luma-ssh-success-card">' +
+        '<img id="luma-success-art" src="https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/header.jpg" alt="" />' +
+        '<div style="min-width:0;">' +
+        (name ? '<div class="luma-ssh-success-card-name">' + esc(name) + '</div>' : '') +
+        (sourceLabel ? '<div class="luma-ssh-success-card-meta">' + t('Source') + ': ' + esc(sourceLabel) + '</div>' : '') +
+        '</div>' +
+        '</div>';
+    }
 
     var depotBtn = IS_LINUX
-      ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>' + t('Download Content') + '</span></button>'
+      ? '<button type="button" id="luma-btn-depot-download" class="luma-ssh-success-depot">' + svgBox() + '<span>' + t('Download Content') + '</span></button>'
       : '';
-    var libraryBtnStyle = IS_LINUX ? ST.secondaryBtn : ST.primaryBtn;
 
     body.innerHTML =
       '<div style="' + ST.successWrap + '">' +
       '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
       '<div style="' + ST.successTitle + '">' + t('Package Added Successfully') + '</div>' +
       '<div style="' + ST.successDetail + '">' + t('The package has been downloaded and installed to your Steam library.') + '</div>' +
+      cardHtml +
       '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
+      '<button type="button" id="luma-btn-open-library" class="luma-ssh-success-primary">' + svgLibrary() + '<span>' + t('View in library') + '</span><span aria-hidden="true">\u2192</span></button>' +
       depotBtn +
-      '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>' + t('View in library') + '</span></button>' +
-      '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">' + t('Continue browsing') + '</button>' +
+      '<button type="button" id="luma-btn-continue" class="luma-ssh-success-secondary">' + t('Continue browsing') + '</button>' +
       '</div>' +
       '</div>';
+
+    var art = document.getElementById('luma-success-art') as HTMLImageElement | null;
+    if (art) {
+      art.onerror = function () {
+        // CDN miss: the proxy art endpoint answers {ok,b64} JSON, so decode
+        // it into a blob URL (same pattern as the sidebar library art).
+        art.onerror = function () { art.style.display = 'none'; };
+        fetch(bridgeUrl('/api/art/' + appId), { method: 'GET', mode: 'cors', cache: 'no-store' })
+          .then(function (r) { return r.json(); })
+          .then(function (ad) {
+            if (!ad || !ad.ok || !ad.b64) { art.style.display = 'none'; return; }
+            var bin = atob(ad.b64);
+            var arr = new Uint8Array(bin.length);
+            for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+            art.src = URL.createObjectURL(new Blob([arr], { type: ad.ct || 'image/jpeg' }));
+          })
+          .catch(function () { art.style.display = 'none'; });
+      };
+    }
 
     var depotDlBtn = document.getElementById('luma-btn-depot-download');
     if (depotDlBtn) {
@@ -1193,6 +1270,7 @@ export function showDownloadError(appId: string, message: string, errorCode?: st
 
     var body = getModalBody();
     if (!body) return;
+    setModalMinimal(true);
 
     var detail = errorCode ? (errorCode + ': ' + message) : message;
     body.innerHTML =

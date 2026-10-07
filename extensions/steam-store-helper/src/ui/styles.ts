@@ -215,6 +215,69 @@ export function ensureKeyframes(): void {
       'background:var(--luma-ssh-a40,rgba(102,192,255,.40));' +
       '}' +
 
+      // Minimal modal chrome (progress/success/error): keep only the close X.
+      // !important is required: header/footer carry inline style attributes.
+      '.luma-ssh-modal-minimal .luma-ssh-modal-header{' +
+      'border-bottom:none!important;padding:8px 10px 0!important;justify-content:flex-end!important;' +
+      '}' +
+      '.luma-ssh-modal-minimal .luma-ssh-modal-hdr-icon,' +
+      '.luma-ssh-modal-minimal .luma-ssh-modal-hdr-text,' +
+      '.luma-ssh-modal-minimal .luma-ssh-modal-hdr-meta{display:none!important;}' +
+      '.luma-ssh-modal-minimal .luma-ssh-modal-footer{display:none!important;}' +
+      '.luma-ssh-modal-minimal .luma-ssh-modal-body{padding-top:4px!important;}' +
+
+      // Success card + stacked full-width actions
+      '.luma-ssh-success-card{' +
+      'display:flex;align-items:center;gap:12px;padding:10px 12px;' +
+      'border:1px solid rgba(255,255,255,.08);border-radius:8px;' +
+      'background:rgba(255,255,255,.03);margin:0 0 16px;text-align:left;' +
+      '}' +
+      '.luma-ssh-success-card img{' +
+      'width:56px;height:56px;border-radius:6px;object-fit:cover;' +
+      'background:rgba(255,255,255,.06);flex-shrink:0;' +
+      '}' +
+      '.luma-ssh-success-card-name{' +
+      'font-size:14px;font-weight:700;color:#fff;' +
+      'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' +
+      '}' +
+      '.luma-ssh-success-card-meta{' +
+      'font-size:11px;color:var(--luma-ssh-text-muted,#8f98a0);margin-top:3px;' +
+      '}' +
+      '.luma-ssh-success-primary{' +
+      'display:flex;align-items:center;justify-content:center;gap:8px;' +
+      'width:100%;padding:12px 18px;border:none;border-radius:6px;' +
+      'cursor:pointer;font-family:inherit;font-size:14px;font-weight:700;' +
+      'background:linear-gradient(180deg,var(--luma-ssh-success,#2ea043) 0%,#24923f 100%);' +
+      'color:#fff;box-shadow:0 0 12px rgba(46,160,67,.25);' +
+      'transition:filter .15s ease,box-shadow .15s ease;' +
+      '}' +
+      '.luma-ssh-success-primary:hover{' +
+      'filter:brightness(1.08);box-shadow:0 0 16px rgba(46,160,67,.4);' +
+      '}' +
+      '.luma-ssh-success-depot{' +
+      'display:flex;align-items:center;justify-content:center;gap:8px;' +
+      'width:100%;padding:12px 18px;border-radius:6px;cursor:pointer;' +
+      'border:1px solid var(--luma-ssh-accent-dim,var(--luma-ssh-a30,rgba(102,192,255,.30)));' +
+      'font-family:inherit;font-size:14px;font-weight:600;background:transparent;' +
+      'color:var(--luma-ssh-accent,#66c0ff);' +
+      'transition:background .15s ease,border-color .15s ease;' +
+      '}' +
+      '.luma-ssh-success-depot:hover{' +
+      'background:var(--luma-ssh-a12,rgba(102,192,255,.12));' +
+      'border-color:var(--luma-ssh-accent,#66c0ff);' +
+      '}' +
+      '.luma-ssh-success-secondary{' +
+      'display:flex;align-items:center;justify-content:center;gap:8px;' +
+      'width:100%;padding:12px 18px;border-radius:6px;cursor:pointer;' +
+      'border:1px solid rgba(255,255,255,.14);' +
+      'font-family:inherit;font-size:14px;font-weight:600;' +
+      'background:rgba(255,255,255,.04);color:var(--luma-ssh-text,#c7d5e0);' +
+      'transition:background .15s ease,border-color .15s ease;' +
+      '}' +
+      '.luma-ssh-success-secondary:hover{' +
+      'background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.22);' +
+      '}' +
+
       // ── Depot card styles ──
       '.luma-depot-card{' +
       'display:grid;' +
@@ -475,7 +538,7 @@ export var ST: Record<string, string> = {
   successIcon: 'width:52px;height:52px;border-radius:50%;background:rgba(46,160,67,.12);border:1px solid rgba(46,160,67,.15);display:flex;align-items:center;justify-content:center;color:var(--luma-ssh-success,#64c882);margin:0 auto 16px;box-shadow:0 0 20px rgba(46,160,67,.15);',
   successTitle: 'font-size:16px;font-weight:700;color:var(--luma-ssh-text-primary,#fff);margin-bottom:6px;',
   successDetail: 'font-size:12px;color:var(--luma-ssh-text-muted,#8f98a0);margin-bottom:20px;overflow-wrap:anywhere;word-break:break-word;',
-  successActions: 'display:flex;gap:12px;justify-content:center;flex-wrap:wrap;',
+  successActions: 'display:flex;flex-direction:column;gap:10px;width:100%;',
   primaryBtn: 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:none;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;letter-spacing:.3px;background:linear-gradient(to right,var(--luma-ssh-accent,#1a9fff),var(--luma-ssh-accent,#66c0ff));color:var(--luma-ssh-text-primary,#fff);box-shadow:0 0 8px var(--luma-ssh-accent-glow,var(--luma-ssh-a25,rgba(102,192,255,.25)));min-width:0;overflow:hidden;',
   secondaryBtn: 'display:inline-flex;align-items:center;gap:6px;padding:10px 22px;border:1px solid var(--luma-ssh-accent-dim,var(--luma-ssh-a30,rgba(102,192,255,.30)));border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;background:transparent;color:var(--luma-ssh-accent,#66c0ff);min-width:0;overflow:hidden;',
   errorIcon: 'width:52px;height:52px;border-radius:50%;background:var(--luma-ssh-error-bg,rgba(231,76,60,.12));border:1px solid rgba(231,76,60,.15);display:flex;align-items:center;justify-content:center;margin:0 auto 16px;box-shadow:0 0 20px rgba(231,76,60,.12);',

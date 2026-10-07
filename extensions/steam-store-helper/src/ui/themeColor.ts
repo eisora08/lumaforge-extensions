@@ -7,13 +7,19 @@
 // order (the plugin's own :root defaults used to override the proxy's
 // ssh-bridge style because it was appended later in the document).
 //
-// Accent candidate priority:
+// Accent candidate priority (ONLY consulted while a LumaForge theme is
+// actually injected — see themeActive()):
 //   1. --st-accent-1              (SpaceTheme: RGB triplet "102, 108, 255")
 //   2. --accent-color             (fluenty: "#135ef2")
-//   3. --fill-color-accent-secondary (Steam standard, fluenty defines it)
+//   3. --fill-color-accent-secondary (fluenty / themes that define it)
 //   4. --luma-ssh-accent          (proxy ssh-bridge, already var()-resolved)
-//   5. --SystemAccentColor        (accent.rs injected, Windows accent)
-//   6. #66c0ff                    (Steam blue fallback)
+//   5. #66c0ff                    (Steam blue fallback)
+// --SystemAccentColor (the OS/Windows accent) was deliberately dropped: it
+// paints every button with e.g. a red accent even when no theme is active.
+//
+// With NO theme active resolveThemeColors() inlines nothing: the plugin's
+// own stylesheet defaults win (fixed #66c0ff accent family + navy panel),
+// so the UI never repaints mid-session and never follows the OS accent.
 //
 // Panel background adopts the theme only when it is dark (luminance < 0.5) —
 // light themes would clash with the extension's dark card backgrounds.
@@ -109,8 +115,7 @@ var ACCENT_CANDIDATES = [
   '--st-accent-1',
   '--accent-color',
   '--fill-color-accent-secondary',
-  '--luma-ssh-accent',
-  '--SystemAccentColor'
+  '--luma-ssh-accent'
 ];
 var FALLBACK_ACCENT: RGB = { r: 102, g: 192, b: 255, a: 1 };
 
@@ -248,6 +253,14 @@ export function resolveThemeColors(): void {
     var root = document.documentElement;
     clearInlineThemeVars(root);
 
+    // No theme injected: inline NOTHING. The stylesheet defaults then win
+    // (fixed #66c0ff accent family + navy panel). Reading Steam's accent
+    // vars here (Windows/OS accent via --fill-color-accent-secondary etc.)
+    // would bake them into inline :root values and repaint the UI twice —
+    // once on the initial resolve and again on the 2s follow-up — every
+    // time the OS accent happened to differ from the default.
+    if (!themeActive()) return;
+
     var accent = firstColorVarBoth(ACCENT_CANDIDATES) || FALLBACK_ACCENT;
     var set = function (name: string, value: string) {
       root.style.setProperty(name, value);
@@ -274,13 +287,12 @@ export function resolveThemeColors(): void {
     }
 
     // Panel background: adopt the theme's base surface so the panel matches
-    // the active theme instead of the hardcoded navy gradient. Only while a
-    // theme payload is actually injected (themeActive). Resolution in tiers —
-    // standard variables (fluenty), then the theme's own :root palette
+    // the active theme instead of the hardcoded navy gradient (we are already
+    // gated behind themeActive above). Resolution in tiers — standard
+    // variables (fluenty), then the theme's own :root palette
     // (Minimal-Dark, Adwaita...), then the body's computed background. Only
     // dark surfaces apply (light panels would clash with dark card/text
     // defaults).
-    if (!themeActive()) return;
     var surface = firstColorVarBoth(SURFACE_CANDIDATES) || scanThemeSurface() || bodySurface();
     if (surface && luminance(surface) < 0.5) {
       set('--luma-ssh-bg-panel', rgba(surface, 1));
