@@ -43,14 +43,20 @@ var _cloudsaveProviderSel = '';
 var _cloudsaveSelectTouched = false;
 
 // Bridge history mixes proxy-created depot completions with extension-pushed
-// source/package entries (toBridgeEntry drops the type field), so the local
-// history - which keeps type - is the discriminator for the restart prompt.
+// source/package entries (toBridgeEntry drops the type field), so we have to
+// recognise source ids ourselves:
+//  1. local history (store origin) keeps the type field, and
+//  2. source requestIds are "{appId}-{epochSecs}-{rand}" (3 numeric segments,
+//     package_installer.rs) while depot queue ids are "{epochMs}-{hex}"
+//     (2 segments, depot_downloader generate_id) - so the 3-segment shape
+//     identifies source entries even on origins with no local history
+//     (the library window), where localStorage never sees store pushes.
 function isSourceHistoryId(id: string): boolean {
   var local = state.downloadHistory || [];
   for (var i = 0; i < local.length; i++) {
     if (String(local[i].id) === id && local[i].type === 'source') return true;
   }
-  return false;
+  return /^\d+-\d+-\d+$/.test(id);
 }
 
 function showSteamRestartDialog(appId: string, gameName: string): void {
