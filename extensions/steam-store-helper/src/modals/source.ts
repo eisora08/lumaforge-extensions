@@ -837,10 +837,10 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
     var badge = getModalBadge(card);
     if (badge) {
       badge.setAttribute('style', ST.badgeAvail);
-      badge.innerHTML = dot('blue') + '<span>' + t('ADDING\u2026') + '</span>';
+      badge.innerHTML = dot('blue') + '<span>' + t('Adding\u2026') + '</span>';
     }
 
-    setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('ADDING\u2026') + '</span>', true);
+    setButtonState(appId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('Adding\u2026') + '</span>', true);
     setButtonLumaState(appId, 'adding');
 
     var selectedOutputType = 'lua+manifest';
@@ -900,10 +900,10 @@ export function handleSourceClick(card: HTMLElement, appId: string, sourceId: st
           badge.setAttribute('style', ST.badgeUnavail);
           badge.innerHTML = dot('red') + '<span>' + t('FAILED \u2014 RETRY') + '</span>';
         }
-        setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('TRY AGAIN') + '</span>', false);
+        setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('Try again') + '</span>', false);
         setButtonLumaState(appId, 'ready');
         setTimeout(function () {
-          setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('ADD VIA LUMAFORGE') + '</span>', false);
+          setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('Add via LumaForge') + '</span>', false);
         }, 3000);
       });
   } catch (e) { console.error('[CEF_INJECT_ERROR] handleSourceClick:', e); }
@@ -1129,14 +1129,14 @@ export function restartDownloadPoll(requestId: string, appId: string): void {
 export function showDownloadSuccess(appId: string, requestId: string): void {
   try {
     // Button state must update even if the user closed the modal already.
-    setButtonState(appId, ST.btnSuccess + 'cursor:default;', svgCheck() + '<span>' + t('ADDED TO LUMAFORGE') + '</span>', true);
+    setButtonState(appId, ST.btnSuccess + 'cursor:default;', svgCheck() + '<span>' + t('Added to LumaForge') + '</span>', true);
     setButtonLumaState(appId, 'added');
 
     var body = getModalBody();
     if (!body) return;
 
     var depotBtn = IS_LINUX
-      ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>' + t('DOWNLOAD CONTENT') + '</span></button>'
+      ? '<button type="button" id="luma-btn-depot-download" style="' + ST.primaryBtn + '">' + svgBox() + '<span>' + t('Download Content') + '</span></button>'
       : '';
     var libraryBtnStyle = IS_LINUX ? ST.secondaryBtn : ST.primaryBtn;
 
@@ -1147,8 +1147,8 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
       '<div style="' + ST.successDetail + '">' + t('The package has been downloaded and installed to your Steam library.') + '</div>' +
       '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
       depotBtn +
-      '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>' + t('VIEW IN LIBRARY') + '</span></button>' +
-      '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">' + t('CONTINUE BROWSING') + '</button>' +
+      '<button type="button" id="luma-btn-open-library" style="' + libraryBtnStyle + '">' + svgLibrary() + '<span>' + t('View in library') + '</span></button>' +
+      '<button type="button" id="luma-btn-continue" style="' + ST.secondaryBtn + '">' + t('Continue browsing') + '</button>' +
       '</div>' +
       '</div>';
 
@@ -1185,10 +1185,10 @@ export function showDownloadSuccess(appId: string, requestId: string): void {
 export function showDownloadError(appId: string, message: string, errorCode?: string): void {
   try {
     // Button state must reset even if the user closed the modal already.
-    setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('TRY AGAIN') + '</span>', false);
+    setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('Try again') + '</span>', false);
     setButtonLumaState(appId, 'ready');
     setTimeout(function () {
-      setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('ADD VIA LUMAFORGE') + '</span>', false);
+      setButtonState(appId, ST.btn, svgDownload() + '<span>' + t('Add via LumaForge') + '</span>', false);
     }, 4000);
 
     var body = getModalBody();
@@ -1201,8 +1201,8 @@ export function showDownloadError(appId: string, message: string, errorCode?: st
       '<div style="' + ST.errorTitle + '">' + t('Download Failed') + '</div>' +
       '<div style="' + ST.errorMsgNew + '">' + detail + '</div>' +
       '<div style="' + ST.errorActions + '" class="luma-ssh-error-actions">' +
-      '<button type="button" id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>' + t('TRY AGAIN') + '</span></button>' +
-      '<button type="button" id="luma-btn-close-error" style="' + ST.secondaryBtn + '">' + t('CLOSE') + '</button>' +
+      '<button type="button" id="luma-btn-retry-download" style="' + ST.primaryBtn + '">' + svgDownload() + '<span>' + t('Try again') + '</span></button>' +
+      '<button type="button" id="luma-btn-close-error" style="' + ST.secondaryBtn + '">' + t('Close') + '</button>' +
       '</div>' +
       '</div>';
 

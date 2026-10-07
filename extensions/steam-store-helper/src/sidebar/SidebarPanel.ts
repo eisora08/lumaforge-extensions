@@ -48,7 +48,7 @@ function showSteamRestartDialog(appId: string, gameName: string): void {
   overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.6);';
 
   var restartBtnHtml = IS_LINUX
-    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:var(--luma-ssh-accent,#66c0ff);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' ' + t('RESTART STEAM') + '</button>'
+    ? '<button type="button" id="luma-sr-restart" style="padding:10px 18px;border-radius:8px;border:none;background:var(--luma-ssh-accent,#66c0ff);color:#fff;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgRefresh() + ' ' + t('Restart Steam') + '</button>'
     : '';
 
   overlay.innerHTML =
@@ -62,8 +62,8 @@ function showSteamRestartDialog(appId: string, gameName: string): void {
       : '') +
     '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
     restartBtnHtml +
-    '<button type="button" id="luma-sr-library" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#c7d5e0;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgLibrary() + ' ' + t('VIEW IN LIBRARY') + '</button>' +
-    '<button type="button" id="luma-sr-close" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8f98a0;font-size:13px;cursor:pointer;">' + (IS_LINUX ? t('RESTART LATER') : t('CLOSE')) + '</button>' +
+    '<button type="button" id="luma-sr-library" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#c7d5e0;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;">' + svgLibrary() + ' ' + t('View in library') + '</button>' +
+    '<button type="button" id="luma-sr-close" style="padding:10px 18px;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:transparent;color:#8f98a0;font-size:13px;cursor:pointer;">' + (IS_LINUX ? t('Restart later') : t('Close')) + '</button>' +
     '</div>' +
     '</div>';
 

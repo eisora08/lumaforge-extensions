@@ -158,7 +158,7 @@ function setupEventDelegation(): void {
             state.bridgeRecoveryAppId = btnAppId;
             state.bridgeRecoveryCount = 0;
 
-            setButtonState(btnAppId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('CHECKING\u2026') + '</span>', true);
+            setButtonState(btnAppId, ST.btn + 'opacity:.7;pointer-events:none;', svgSpinner() + '<span>' + t('Checking\u2026') + '</span>', true);
             setButtonLumaState(btnAppId, 'checking');
             checkLocalStatus(btnAppId, function (err: any, data: any, resolvedId: string) {
               handleLocalStatusResult(resolvedId, err, data);
@@ -167,8 +167,7 @@ function setupEventDelegation(): void {
           }
           if (btn.getAttribute('aria-disabled') === 'true') return;
           if (btnLumaState === 'added') return;
-          var btnText = btn.textContent || '';
-          if (btnText.indexOf('INSTALL') !== -1 || btnText.indexOf('IN LIBRARY') !== -1) {
+          if (btnLumaState === 'in-library' || btnLumaState === 'installed' || btnLumaState === 'installing') {
             if (IS_LINUX) {
               console.log('[LUMA_INJECT] INSTALL click on Linux → opening depot modal for AppID:', btnAppId);
               openDepotModal(btnAppId);

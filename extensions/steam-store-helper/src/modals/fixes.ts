@@ -272,7 +272,7 @@ function loadFixesData(appId: string): void {
         '<div style="' + ST.errorTitle + '">' + t('Failed to Load Fixes') + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
-        '<button type="button" id="luma-fixes-retry" style="' + ST.retryBtn + '">' + t('TRY AGAIN') + '</button>' +
+        '<button type="button" id="luma-fixes-retry" style="' + ST.retryBtn + '">' + t('Try again') + '</button>' +
         '</div>' +
         '</div>';
       var retryBtn = document.getElementById('luma-fixes-retry');

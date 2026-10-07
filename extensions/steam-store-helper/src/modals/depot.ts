@@ -180,7 +180,7 @@ export function fetchDepotsForModal(appId: string): void {
         '<div style="' + ST.errorTitle + '">' + (isNotInstalled ? t('DepotDownloaderMod Not Installed') : isNoKeys ? t('No Depot Keys Found') : t('Failed to Resolve Depots')) + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
-        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">' + t('TRY AGAIN') + '</button>' +
+        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">' + t('Try again') + '</button>' +
         '</div>' +
         '</div>';
 
@@ -292,7 +292,7 @@ export function renderDepotList(appId: string): void {
   // Total bar
   html += '<div style="' + ST.depotTotal + '">';
   html += '<span><strong>' + totalSelected + '</strong> depot' + (totalSelected !== 1 ? 's' : '') + ' selected \u00b7 <strong>' + formatBytes(totalSize) + '</strong></span>';
-  html += '<button type="button" id="luma-depot-start" style="' + ST.primaryBtn + (totalSelected === 0 ? 'opacity:.5;pointer-events:none;' : '') + '">' + svgDownload() + '<span>' + t('START DOWNLOAD') + '</span></button>';
+  html += '<button type="button" id="luma-depot-start" style="' + ST.primaryBtn + (totalSelected === 0 ? 'opacity:.5;pointer-events:none;' : '') + '">' + svgDownload() + '<span>' + t('Start download') + '</span></button>';
   html += '</div>';
 
   body.innerHTML = html;
@@ -404,8 +404,8 @@ export function startDepotDownload(appId: string): void {
         '<div style="' + ST.errorTitle + '">' + t('Download Failed to Start') + '</div>' +
         '<div style="' + ST.errorMsgNew + '">' + escapeHtml(err.message || t('Unknown error')) + '</div>' +
         '<div style="' + ST.errorActions + '">' +
-        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">' + t('TRY AGAIN') + '</button>' +
-        '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">' + t('CLOSE') + '</button>' +
+        '<button type="button" id="luma-depot-retry" style="' + ST.retryBtn + '">' + t('Try again') + '</button>' +
+        '<button type="button" id="luma-depot-close" style="' + ST.cancelBtn + '">' + t('Close') + '</button>' +
         '</div>' +
         '</div>';
 
