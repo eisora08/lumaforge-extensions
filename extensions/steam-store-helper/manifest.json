@@ -4,7 +4,7 @@
   "name": "steam-store-helper",
   "displayName": "Steam Store Package Helper",
   "description": "Injects asset download controls directly into the official Steam Store action bar via standalone WebSockets.",
-  "version": "2.6.6",
+  "version": "2.6.7",
   "managedFiles": [],
   "summary": "Asset download controls on every Steam Store game page",
   "author": "LumaForge",
