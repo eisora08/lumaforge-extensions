@@ -224,6 +224,21 @@ export function bridgeUrl(path: string): string {
   return BRIDGE_SCHEME + '://' + BRIDGE_HOST + ':' + bridgeConfig.port + path;
 }
 
+// Hero image the store page already loaded (img.game_header_image_full →
+// shared.fastly.steamstatic.com/store_item_assets/...). Works even when the
+// classic CDN /steam/apps/<id>/header.jpg entry is dead (e.g. 3768760).
+// Returns '' on non-store surfaces (library, age gate) so callers can skip.
+export function readPageHeaderUrl(): string {
+  try {
+    var el = document.querySelector('img.game_header_image_full') as HTMLImageElement | null;
+    if (el) {
+      var src = el.currentSrc || el.getAttribute('src') || '';
+      if (src && src.indexOf('https://') === 0) return src;
+    }
+  } catch (e) { }
+  return '';
+}
+
 export function esc(s: string): string {
   return String(s || '')
     .replace(/&/g, '&amp;')

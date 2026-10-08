@@ -1,4 +1,5 @@
 import { state } from '../core/state';
+import { bridgeUrl } from '../ui/helpers';
 
 // ---------------------------------------------------------------------------
 // Bridge fetch helper with comprehensive logging
@@ -85,4 +86,71 @@ export function retryFetch(
   }
 
   return tryOnce();
+}
+
+// ---------------------------------------------------------------------------
+// Art chain loader — tries each step in order until an image renders.
+// Steps starting with '/' are bridge paths resolved via bridgeUrl() and
+// fetched as JSON ({ok, ct, b64} → Blob URL, same as the sidebar — never
+// <img src="http://127.0.0.1"> which is blocked as mixed content). Any
+// other step is a direct https image URL. When every step fails the <img>
+// is hidden so the parent box's SVG fallback icon shows through. Callers
+// create the <img> with opacity:0 — this fades it in on first success.
+// ---------------------------------------------------------------------------
+export function loadArtChain(img: HTMLImageElement, appId: string, steps: string[]): void {
+  var idx = 0;
+  var clean = steps.filter(function (s) {
+    return !!s;
+  });
+
+  function fail(): void {
+    idx++;
+    if (idx >= clean.length) {
+      img.style.display = 'none';
+      return;
+    }
+    tryStep();
+  }
+
+  function show(src: string): void {
+    img.onload = function () {
+      img.style.opacity = '1';
+    };
+    img.onerror = function () {
+      fail();
+    };
+    img.src = src;
+  }
+
+  function tryStep(): void {
+    var step = clean[idx];
+    if (step.charAt(0) === '/') {
+      retryFetch(bridgeUrl(step), { method: 'GET', mode: 'cors', cache: 'no-store' }, 'modal-art', { appId: appId })
+        .then(function (r) {
+          return r.json();
+        })
+        .then(function (d) {
+          if (!d || !d.ok || !d.b64) {
+            fail();
+            return;
+          }
+          var bin = atob(d.b64);
+          var arr = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          show(URL.createObjectURL(new Blob([arr], { type: d.ct || 'image/jpeg' })));
+        })
+        .catch(function () {
+          fail();
+        });
+    } else {
+      show(step);
+    }
+  }
+
+  console.log('[LUMA_BRIDGE] art chain for AppID ' + appId + ' — steps: ' + clean.length);
+  if (clean.length === 0) {
+    img.style.display = 'none';
+    return;
+  }
+  tryStep();
 }

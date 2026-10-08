@@ -4,8 +4,8 @@ import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svg
 import { ST, dot } from '../ui/styles';
 import { resolveThemeColors } from '../ui/themeColor';
 import { t } from '../i18n';
-import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, bridgeUrl, steamKeysSettingsUrl } from '../ui/helpers';
-import { bridgeFetch } from '../api/bridge';
+import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, bridgeUrl, steamKeysSettingsUrl, readPageHeaderUrl } from '../ui/helpers';
+import { bridgeFetch, loadArtChain } from '../api/bridge';
 import { setButtonState, setButtonLumaState } from '../ui/button';
 import { openDepotModal } from './depot';
 import { ensureSettingsButton, openSettingsModal } from './settings';
@@ -50,6 +50,18 @@ function setModalMinimal(minimal: boolean): void {
     if (!panel) return;
     if (minimal) panel.classList.add('luma-ssh-modal-minimal');
     else panel.classList.remove('luma-ssh-modal-minimal');
+  } catch (e) { }
+}
+
+// The footer Cancel only means something while the providers request is in
+// flight (it aborts the fetch). Once loading resolves — list, empty or
+// error — remove it so the footer reads as note-only; the header X, Escape
+// and backdrop click already dismiss the dialog. Retry rebuilds the modal
+// via openSourceModal(), which recreates the button for the new load.
+function dropFooterCancel(): void {
+  try {
+    var c = document.getElementById('luma-ssh-source-cancel');
+    if (c && c.parentNode) c.parentNode.removeChild(c);
   } catch (e) { }
 }
 
@@ -98,19 +110,32 @@ export function openSourceModal(appId: string): void {
     header.setAttribute('style', ST.header);
     var hdrIcon = document.createElement('span');
     hdrIcon.setAttribute('class', 'luma-ssh-modal-hdr-icon');
-    hdrIcon.setAttribute('style', ST.headerIcon);
+    hdrIcon.setAttribute('style', ST.headerIcon + 'position:relative;');
     hdrIcon.innerHTML = svgCloudDownload();
+    var hdrArt = document.createElement('img');
+    hdrArt.setAttribute('alt', '');
+    hdrArt.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:9px;opacity:0;transition:opacity .2s ease;pointer-events:none;');
+    hdrIcon.appendChild(hdrArt);
+    loadArtChain(hdrArt, appId, [
+      readPageHeaderUrl(),
+      'https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/header.jpg',
+      'https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/library_600x900.jpg',
+      '/api/art/' + appId,
+    ]);
     var hdrTextWrap = document.createElement('div');
     hdrTextWrap.setAttribute('class', 'luma-ssh-modal-hdr-text');
     hdrTextWrap.setAttribute('style', 'min-width:0;flex:1;');
+    var gameName = readPageGameName();
     var hdrTitle = document.createElement('div');
     hdrTitle.id = titleId;
-    hdrTitle.setAttribute('style', ST.headerTitle);
-    hdrTitle.textContent = t('Select Download Source');
+    hdrTitle.setAttribute('style', ST.headerTitle + (gameName ? 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;' : ''));
+    hdrTitle.textContent = gameName || t('Select Download Source');
     var hdrSubtitle = document.createElement('div');
     hdrSubtitle.id = descId;
     hdrSubtitle.setAttribute('style', ST.headerSubtitle);
-    hdrSubtitle.textContent = t('Choose a trusted provider for this package');
+    hdrSubtitle.textContent = gameName
+      ? 'App ' + appId + ' · ' + t('Choose a trusted provider for this package')
+      : t('Choose a trusted provider for this package');
     hdrTextWrap.appendChild(hdrTitle);
     hdrTextWrap.appendChild(hdrSubtitle);
 
@@ -172,6 +197,7 @@ export function openSourceModal(appId: string): void {
     footerNote.textContent = t('Packages are installed through LumaForge');
     var cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
+    cancelBtn.id = 'luma-ssh-source-cancel';
     cancelBtn.setAttribute('style', ST.cancelBtn);
     cancelBtn.textContent = t('Cancel');
     cancelBtn.addEventListener('click', closeModal);
@@ -386,6 +412,7 @@ export function openSourceModal(appId: string): void {
               : t('Unknown provider error'))
           );
 
+        dropFooterCancel();
         body.innerHTML =
           '<div style="' + ST.errorWrap + '">' +
           '<div style="' + ST.errorMsg + '">' +
@@ -419,6 +446,7 @@ export function renderSources(
   providerStats: any[] | null
 ): void {
   try {
+    dropFooterCancel();
     console.log(
       '[PROVIDER_RENDER] Rendering sources:',
       {
@@ -1185,7 +1213,7 @@ export function showDownloadSuccess(appId: string, requestId: string, gameName?:
     if (name || sourceLabel) {
       cardHtml =
         '<div class="luma-ssh-success-card">' +
-        '<img id="luma-success-art" src="https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/header.jpg" alt="" />' +
+        '<img id="luma-success-art" src="' + esc(readPageHeaderUrl() || 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/header.jpg') + '" alt="" />' +
         '<div style="min-width:0;">' +
         (name ? '<div class="luma-ssh-success-card-name">' + esc(name) + '</div>' : '') +
         (sourceLabel ? '<div class="luma-ssh-success-card-meta">' + t('Source') + ': ' + esc(sourceLabel) + '</div>' : '') +

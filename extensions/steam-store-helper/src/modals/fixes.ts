@@ -4,6 +4,7 @@ import { ST, ensureKeyframes } from '../ui/styles';
 import { resolveThemeColors } from '../ui/themeColor';
 import { t } from '../i18n';
 import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody } from '../ui/helpers';
+import { loadArtChain } from '../api/bridge';
 import { escapeHtml } from '../ui/dom';
 import { closeModal } from './source';
 
@@ -123,8 +124,17 @@ export function openFixesModal(appId: string): void {
     var header = document.createElement('div');
     header.setAttribute('style', ST.header);
     var hdrIcon = document.createElement('span');
-    hdrIcon.setAttribute('style', ST.headerIcon);
+    hdrIcon.setAttribute('style', ST.headerIcon + 'position:relative;');
     hdrIcon.innerHTML = svgGear();
+    var hdrArt = document.createElement('img');
+    hdrArt.setAttribute('alt', '');
+    hdrArt.setAttribute('style', 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:9px;opacity:0;transition:opacity .2s ease;pointer-events:none;');
+    hdrIcon.appendChild(hdrArt);
+    loadArtChain(hdrArt, appId, [
+      '/api/art/' + appId,
+      'https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/header.jpg',
+      'https://cdn.cloudflare.steamstatic.com/steam/apps/' + appId + '/library_600x900.jpg',
+    ]);
     var hdrTextWrap = document.createElement('div');
     hdrTextWrap.setAttribute('style', 'min-width:0;flex:1;');
     var hdrTitle = document.createElement('div');
@@ -177,13 +187,7 @@ export function openFixesModal(appId: string): void {
     var footerNote = document.createElement('span');
     footerNote.setAttribute('style', ST.footerNote);
     footerNote.textContent = t('Fixes back up original files (.bak) and write a fix log');
-    var closeFooterBtn = document.createElement('button');
-    closeFooterBtn.type = 'button';
-    closeFooterBtn.setAttribute('style', ST.cancelBtn);
-    closeFooterBtn.textContent = t('Close');
-    closeFooterBtn.addEventListener('click', function () { closeFixesModal(); });
     footer.appendChild(footerNote);
-    footer.appendChild(closeFooterBtn);
 
     panel.appendChild(header);
     panel.appendChild(body);
