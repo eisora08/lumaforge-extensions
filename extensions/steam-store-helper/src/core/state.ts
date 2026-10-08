@@ -33,6 +33,7 @@ var RECONCILE_DEBOUNCE_MS = 200;
 var LOCAL_STATUS_TIMEOUT_MS = 8000;
 
 var ACTION_SELECTORS = [
+  '.game_area_purchase_game_wrapper .btn_addtocart',
   '#game_area_purchase_game .btn_addtocart',
   '.game_area_purchase_game .btn_addtocart',
   '#game_area_purchase_game',

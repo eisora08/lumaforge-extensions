@@ -67,12 +67,75 @@ export function extractAppId(): string | null {
   } catch (_) { return null; }
 }
 
-export function findActionContainer(): Element | null {
-  for (var i = 0; i < ACTION_SELECTORS.length; i++) {
-    var el = document.querySelector(ACTION_SELECTORS[i]);
-    if (el) return el;
+function collectProductIds(el: Element): string[] {
+  var ids: string[] = [];
+  var nodes: Element[] = [el];
+  var dsNodes = el.querySelectorAll('[data-ds-appid]');
+  for (var i = 0; i < dsNodes.length; i++) nodes.push(dsNodes[i]);
+
+  for (var n = 0; n < nodes.length; n++) {
+    var raw = nodes[n].getAttribute('data-ds-appid');
+    if (!raw) continue;
+    var parts = raw.split(',');
+    for (var p = 0; p < parts.length; p++) {
+      var id = parts[p].trim();
+      if (/^\d+$/.test(id)) ids.push(id);
+    }
   }
-  return null;
+
+  var js = (el.getAttribute('href') || '') + ' ' + (el.getAttribute('onclick') || '');
+  var anchors = el.querySelectorAll('a[href],a[onclick],area[href]');
+  for (var a = 0; a < anchors.length; a++) {
+    js += ' ' + (anchors[a].getAttribute('href') || '') + ' ' + (anchors[a].getAttribute('onclick') || '');
+  }
+  var re = /steam:\/\/(?:install|run|launch)\/(\d+)/g;
+  var m = re.exec(js);
+  while (m) { ids.push(m[1]); m = re.exec(js); }
+
+  return ids;
+}
+
+function belongsToOtherProduct(el: Element, pageAppId: string): boolean {
+  try {
+    if (!pageAppId) return false;
+    var ids = collectProductIds(el);
+    if (!ids.length) return false;
+    for (var i = 0; i < ids.length; i++) {
+      if (ids[i] === pageAppId) return false;
+    }
+    return true;
+  } catch (_) { return false; }
+}
+
+export function hasPurchaseSection(): boolean {
+  try {
+    return !!document.querySelector(
+      '.game_area_purchase_game_wrapper, [id^="game_area_purchase_section_add_to_cart_"]'
+    );
+  } catch (_) { return false; }
+}
+
+export function isDlcPage(): boolean {
+  try {
+    return !!(
+      document.querySelector('.breadcrumbs a[href*="/dlc/"]') ||
+      document.querySelector('.game_area_dlc_bubble')
+    );
+  } catch (_) { return false; }
+}
+
+export function findActionContainer(pageAppId: string): Element | null {
+  var fallback: Element | null = null;
+  for (var i = 0; i < ACTION_SELECTORS.length; i++) {
+    var matches = document.querySelectorAll(ACTION_SELECTORS[i]);
+    for (var j = 0; j < matches.length; j++) {
+      var el = matches[j];
+      if (!fallback) fallback = el;
+      if (el.closest('.demo_above_purchase')) continue;
+      if (!belongsToOtherProduct(el, pageAppId)) return el;
+    }
+  }
+  return fallback;
 }
 
 export function formatFileSize(bytes: number | string): string | null {

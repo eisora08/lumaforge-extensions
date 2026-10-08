@@ -2,7 +2,7 @@ import { state, _fetchSeq, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR,
 import { svgDownload, svgSpinner, svgCheck, svgGear, svgX, svgCloudDownload } from '../ui/svg';
 import { ST } from '../ui/styles';
 import { ensureKeyframes } from '../ui/styles';
-import { extractAppId, findActionContainer, localStatusUrl, isLibrarySurface } from '../ui/helpers';
+import { extractAppId, findActionContainer, localStatusUrl, isLibrarySurface, hasPurchaseSection, isDlcPage } from '../ui/helpers';
 import { retryFetch } from '../api/bridge';
 import { t } from '../i18n';
 
@@ -418,6 +418,12 @@ export function ensureLumaButtonExists(): void {
       return;
     }
 
+    if (!hasPurchaseSection() || isDlcPage()) {
+      console.log('[LUMA_WATCHER] No purchase section or DLC page, skipping AppID:', appId);
+      removeButton();
+      return;
+    }
+
     var existing = document.getElementById(BTN_ID);
     if (existing && existing.getAttribute(BTN_APPID_ATTR) === appId) {
       var existingState = existing.getAttribute(BTN_STATE_ATTR);
@@ -432,7 +438,7 @@ export function ensureLumaButtonExists(): void {
 
       console.log('[LUMA_WATCHER] Injecting controls for AppID:', appId);
 
-      var container = findActionContainer();
+      var container = findActionContainer(appId);
       if (!container) {
         console.log('[LUMA_WATCHER] Target container not found yet for AppID:', appId);
         return;
