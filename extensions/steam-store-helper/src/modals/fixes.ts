@@ -3,7 +3,7 @@ import { svgBox, svgX, svgSpinner, svgErrorCircle, svgCheck, svgGear, svgLock, s
 import { ST, ensureKeyframes } from '../ui/styles';
 import { resolveThemeColors } from '../ui/themeColor';
 import { t } from '../i18n';
-import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody } from '../ui/helpers';
+import { fixesInfoUrl, fixesStatusUrl, fixesApplyUrl, fixesUnfixUrl, fixesCatalogUrl, toolInstallUrl, toolsUrl, getModalBody, jsLog } from '../ui/helpers';
 import { loadArtChain } from '../api/bridge';
 import { escapeHtml } from '../ui/dom';
 import { closeModal } from './source';
@@ -196,6 +196,28 @@ export function openFixesModal(appId: string): void {
 
     (document.body || document.documentElement).appendChild(backdrop);
     try { closeBtn.focus(); } catch (_) { }
+
+    // Mount forensics: which physical window received the modal, and whether
+    // it survives the next frames (distinguishes "removed" from "invisible").
+    try {
+      var mnt = 'fixes mounted name=' + (window.name || '-') +
+        ' focus=' + (document.hasFocus() ? 'Y' : 'N') +
+        ' bodyKids=' + (document.body ? document.body.children.length : -1);
+      jsLog(mnt);
+      console.log('[LUMA_INJECT] ' + mnt);
+      setTimeout(function () {
+        try {
+          var chk = 'fixes check connected=' + (backdrop.isConnected ? 'Y' : 'N');
+          if (backdrop.isConnected) {
+            var r = backdrop.getBoundingClientRect();
+            chk += ' rect=' + Math.round(r.width) + 'x' + Math.round(r.height) +
+              '@' + Math.round(r.left) + ',' + Math.round(r.top);
+          }
+          jsLog(chk);
+          console.log('[LUMA_INJECT] ' + chk);
+        } catch (_) { }
+      }, 400);
+    } catch (_) { }
 
     loadFixesData(appId);
   } catch (_) { }

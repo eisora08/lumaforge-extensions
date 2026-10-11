@@ -1,5 +1,6 @@
-import { luaFilesUrl, luaFileDeleteUrl, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl, jsLog } from './helpers';
+import { luaFilesUrl, luaFileDeleteUrl, steamKeysPinsUrl, steamKeysPinUrl, steamKeysUnpinUrl, jsLog, isLibrarySurface } from './helpers';
 import { openFixesModal } from '../modals/fixes';
+import { LUMA_INJECT_VERSION } from '../core/state';
 import { t } from '../i18n';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,19 @@ var obsTimer: ReturnType<typeof setInterval> | null = null;
 // opens right after is the one we want (works even when the game is not
 // installed and Steam renders neither "Browse local files" nor "Uninstall").
 var manageHoverAt = 0;
+// The exact-text "Manage" row element from the last hover; the geometry
+// path uses it as the anchor to find the submenu on PCs whose menus have
+// neither readable classes nor ARIA roles.
+var manageRowEl: Element | null = null;
+// True while the pointer is ON the "Manage" row, inside our own submenu, or
+// in the zone immediately right/top-aligned with that row. Hover-family
+// acceptance (geometry path + isManageMenu fallback) requires this — a stale
+// 2s window alone accepted other submenus ("Add to" / "Remove from") and
+// arbitrary menus after the user clicked away.
+var pointerOnManage = false;
+// Last prefetchMenuData() start; setContextApp uses it to collapse bursts
+// of same-app contextmenu re-dispatches into a single bridge round-trip.
+var lastPrefetchAt = 0;
 // Last pointer interaction (any hover/click/right-click in a bound doc).
 // The class-agnostic heavy paths (whole-doc row search) only run within a
 // few seconds of activity so idle MutationObserver churn stays cheap.
@@ -45,6 +59,16 @@ var interactAt = 0;
 // Last scanMenus() skip reason — logged only when it changes (scan runs on
 // every popup mutation, logging every call would flood the console).
 var _lastScanSkip = '';
+// Menu/contents container that last received (or confirmed) our items;
+// stripOrphans() keeps only this one and removes [data-luma-manage] rows
+// everywhere else (Steam reuses submenu DOM between triggers, so rows left
+// behind would resurface in "Add to" / "Remove from" submenus).
+var lastEnsured: Element | null = null;
+// Snapshot of lastEnsured's shape (children count + first row text) taken at
+// ensure time: a failing scan only invalidates lastEnsured when the content
+// changed (Steam reused the element for another menu) or it is gone/hidden —
+// a still-identical visible container is the submenu the user is navigating.
+var lastEnsuredSig = '';
 
 // Steam's own menu labels, in every language we ship detection for (english,
 // spanish, latam). Exact matches for rows/labels, substring matches for menu
@@ -85,6 +109,11 @@ interface PopupEntry {
 }
 var _origOpen: any = null;
 var popups: PopupEntry[] = [];
+var _msgHooked = false;
+var _bindOpener: any = null;
+var _bindOpener2: any = null;
+var _bcFixes: any = null;
+var _bcFixesHooked = false;
 
 // Steam keeps the registry of every popup window in `g_PopupManager`
 // (library.js assigns window.g_PopupManager). Menus are created through it
@@ -153,8 +182,72 @@ function sweepManagers(): void {
 }
 
 export function startManageMenu(): void {
+  // Export the fixes-modal opener on THIS realm's window so any instance
+  // that owns a row (menus render as IFRAMEs on some PCs and as
+  // window.open popups on others; every injected realm scans them) can
+  // redirect the mount to the main library window instead of appending the
+  // modal inside a menu frame that Steam hides or reuses.
+  try { (window as any).__lumaFixesMount = openFixesModal; } catch (_) { }
+  if (!_msgHooked) {
+    _msgHooked = true;
+    // Cross-origin fallback for mountFixesModal: when the direct property
+    // read on the owning window throws, it posts {__lumaFixesOpen} here and
+    // the modal opens in THIS realm's document.
+    try {
+      window.addEventListener('message', function (ev: MessageEvent) {
+        try {
+          var d: any = ev.data;
+          if (d && d.__lumaFixesOpen) {
+            jsLog('fixes mount via=message');
+            openFixesModal(String(d.__lumaFixesOpen));
+          }
+        } catch (_) { }
+      });
+    } catch (_) { }
+  }
+  // Broadcast fallback: when the row's owning realm cannot reach any
+  // script-bearing ancestor (menu popups' opener has no script here), the
+  // emitter posts {__lumaFixesOpen} on this channel and exactly one receiver
+  // — a library-surface window not named contextmenu_* — opens the modal.
+  // Menu popup realms are filtered by name so a closing popup can never
+  // swallow the modal, and store realms fail the isLibrarySurface() guard.
+  if (!_bcFixesHooked) {
+    _bcFixesHooked = true;
+    try {
+      _bcFixes = new BroadcastChannel('lumaforge-fixes');
+      _bcFixes.onmessage = function (ev: MessageEvent) {
+        try {
+          var d: any = ev.data;
+          if (!d || !d.__lumaFixesOpen) return;
+          if (!isLibrarySurface()) return;
+          if (window.name && window.name.indexOf('contextmenu_') === 0) return;
+          jsLog('fixes mount via=broadcast');
+          openFixesModal(String(d.__lumaFixesOpen));
+        } catch (_) { }
+      };
+    } catch (_) { }
+  }
   if (bound) return;
   bound = true;
+  // Steam clears window.opener after popup setup on some builds, which
+  // silently emptied mountFixesModal's candidate list at click time. Capture
+  // the live WindowProxy references while they are still reachable here; the
+  // references stay usable for redirects even after .opener is nulled.
+  if (!_bindOpener) {
+    try { _bindOpener = window.opener || null; } catch (_) { }
+    try { _bindOpener2 = (_bindOpener && (_bindOpener as any).opener) || null; } catch (_) { }
+  }
+  // Build beacon: the proxy log must always show which inject build is
+  // actually running — stale copies on other PCs were indistinguishable.
+  // Topology flags separate frames (parent != self) from windows/popups;
+  // href identifies which realm bound (main index.html vs menu popups).
+  // console.log echoes through cef_hook in case the early jsLog is dropped.
+  var beacon = 'manage build ' + LUMA_INJECT_VERSION +
+    ' opener=' + (window.opener ? 'Y' : 'N') +
+    ' frame=' + (window.parent && window.parent !== window ? 'Y' : 'N') +
+    ' href=' + location.href.slice(0, 70);
+  jsLog(beacon);
+  console.log('[LUMA_INJECT] ' + beacon);
   document.addEventListener('contextmenu', onContextMenu, true);
   document.addEventListener('mouseover', onMouseOver, true);
   document.addEventListener('click', onClickCapture, true);
@@ -239,7 +332,7 @@ function trackPopupWin(w: Window | null, src: string): void {
   var entry: PopupEntry = { win: w, doc: null, obs: null, timer: null };
   popups.push(entry);
   pollPopup(entry);
-  entry.timer = setInterval(function () { pollPopup(entry); }, 500);
+  entry.timer = setInterval(function () { pollPopup(entry); }, 1000);
 }
 
 function cleanupPopup(entry: PopupEntry): void {
@@ -279,12 +372,21 @@ function pollPopup(entry: PopupEntry): void {
   } catch (_) { }
 }
 
-// Scan this document plus every reachable popup document.
+// Scan this document plus every reachable popup document. Coalesced: the
+// library body mutates constantly (React), and one scan per 60ms window is
+// plenty — the submenu cannot appear and matter faster than that.
+var scanPending = false;
 function scanAll(): void {
-  scanMenus(document);
-  for (var i = 0; i < popups.length; i++) {
-    if (popups[i].doc) scanMenus(popups[i].doc as Document);
-  }
+  if (scanPending) return;
+  scanPending = true;
+  setTimeout(function () {
+    scanPending = false;
+    if (!bound) return;
+    scanMenus(document);
+    for (var i = 0; i < popups.length; i++) {
+      if (popups[i].doc) scanMenus(popups[i].doc as Document);
+    }
+  }, 60);
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +428,10 @@ function appIdFromNode(node: any): string | null {
 }
 
 function setContextApp(id: string | null): void {
+  // Burst guard: Steam re-dispatches contextmenu (or the user double
+  // right-clicks) while the menu is already open — one refetch per burst
+  // keeps data fresh without hammering the bridge with duplicate requests.
+  if (id && id === ctxAppId && menuData && Date.now() - lastPrefetchAt < 400) return;
   ctxAppId = id;
   if (id) prefetchMenuData(id);
   else menuData = null;
@@ -333,7 +439,12 @@ function setContextApp(id: string | null): void {
 
 function onContextMenu(e: MouseEvent): void {
   try {
-    manageHoverAt = 0;
+    var t: any = e.target;
+    // Right-clicks inside an already-open menu are not a new context:
+    // Steam re-dispatches contextmenu on menu rows, and processing those
+    // reset the hover window and re-prefetched in bursts — which killed
+    // the Manage fallback on PCs where the submenu is identified by hover.
+    if (t && t.closest && (t.closest('.contextMenu') || t.closest('[role="menu"]'))) return;
     interactAt = Date.now();
     // The event may fire in a popup document (bound via trackPopup).
     var doc = ((e.target as any) && (e.target as any).ownerDocument) || document;
@@ -343,6 +454,11 @@ function onContextMenu(e: MouseEvent): void {
       if (under && under !== e.target) id = appIdFromNode(under);
     }
     if (!id) id = lastHoverAppId;
+    // Only a context for a DIFFERENT app kills the hover window; a repeat
+    // for the same app (synthetic events, double right-click) keeps it. A
+    // different app also means the previous menu's rows are leftovers in a
+    // reused element — strip them before the new menu renders.
+    if (id !== ctxAppId) { manageHoverAt = 0; manageRowEl = null; pointerOnManage = false; hardStripAll(); }
     setContextApp(id);
     // Diagnostic: are the menus even in THIS document? If visible=0 here but
     // the user sees a context menu, Steam opened it in a separate popup
@@ -365,9 +481,83 @@ function onMouseOver(e: MouseEvent): void {
     // aria-haspopup and raw text.
     var item = t.closest ? (t.closest('.contextMenuItem') ||
       t.closest('[role="menuitem"]') || t.closest('[aria-haspopup]')) : null;
-    if (item && matchTxt(item.textContent, STR_MANAGE)) manageHoverAt = Date.now();
-    else if (!item && matchTxt(t.textContent, STR_MANAGE)) manageHoverAt = Date.now();
+    if (item && matchTxt(item.textContent, STR_MANAGE)) { manageHoverAt = Date.now(); manageRowEl = item; }
+    else if (!item && matchTxt(t.textContent, STR_MANAGE)) { manageHoverAt = Date.now(); manageRowEl = t; }
+    else if (item) {
+      // Pointer moved to a DIFFERENT root entry ("Add to", "Remove from",
+      // ...): the next submenu Steam opens is not ours, so cancel the hover
+      // window. Rows inside our own submenu do not reset it — their host
+      // menu has no "Manage" trigger row.
+      var host = item.closest ? (item.closest('.contextMenu') ||
+        item.closest('[role="menu"]')) : null;
+      if (host && menuHasManageRow(host)) { manageHoverAt = 0; manageRowEl = null; }
+    } else if (manageRowEl && t.parentElement &&
+      t.parentElement === manageRowEl.parentElement) {
+      // Class-less PC (no .contextMenuItem / role=menuitem anywhere): sibling
+      // root entries share the parent with the "Manage" row. A short
+      // non-Manage sibling text ("Add to", "Remove from") means the next
+      // submenu is not ours — cancel the hover window so tryGeometryPath
+      // never targets it. Empty-text siblings (icons inside our own row)
+      // do not clear.
+      var st = (t.textContent || '').trim();
+      if (st.length > 0 && st.length < 40 && !matchTxt(t.textContent, STR_MANAGE)) {
+        manageHoverAt = 0;
+        manageRowEl = null;
+      }
+    }
+    updatePointerOnManage(t);
   } catch (_) { }
+}
+
+// Recompute pointerOnManage for the current hover target: true only on the
+// "Manage" row itself, inside our own injected submenu, or in the zone
+// immediately right of the row and top-aligned with it (where its submenu
+// opens). Anywhere else — other root rows, other menus, the library
+// background — is false, which is what stops stale-window acceptance of
+// "Add to" / "Remove from" / arbitrary menus.
+function updatePointerOnManage(t: any): void {
+  var was = pointerOnManage;
+  var next = false;
+  try {
+    if (manageRowEl) {
+      if (t === manageRowEl || (manageRowEl.contains && manageRowEl.contains(t))) {
+        next = true;
+      } else if (lastEnsured && (t === lastEnsured || (lastEnsured.contains && lastEnsured.contains(t)))) {
+        next = true;
+      } else {
+        var tr = t.getBoundingClientRect ? t.getBoundingClientRect() : null;
+        var rr = manageRowEl.getBoundingClientRect ? manageRowEl.getBoundingClientRect() : null;
+        if (tr && rr && (tr.width || tr.height) && (rr.width || rr.height) &&
+          tr.top >= rr.top - 10 && tr.top <= rr.top + 10 && tr.left >= rr.left - 40) {
+          // Same horizontal band as the Manage row: the row's own icon/label
+          // (left of the label), the row itself, or the submenu zone to its
+          // right. Other root rows sit ~30px away vertically and the library
+          // background starts far left — both miss this band.
+          next = true;
+        }
+      }
+    }
+  } catch (_) { next = false; }
+  pointerOnManage = next;
+  // Entering the Manage row: Steam opens the hover submenu after ~300ms via
+  // a class/visibility toggle — no childList mutation, so the observers
+  // never fire and no scan lands inside the hover window (the other PC's
+  // logs showed zero scans with hoverAge 100-2000ms). Schedule them.
+  if (next && !was) scheduleHoverScans();
+}
+
+var _hoverScanTimers: (ReturnType<typeof setTimeout>)[] = [];
+function scheduleHoverScans(): void {
+  for (var i = 0; i < _hoverScanTimers.length; i++) clearTimeout(_hoverScanTimers[i]);
+  _hoverScanTimers.length = 0;
+  var delays = [350, 700, 1200];
+  for (var j = 0; j < delays.length; j++) {
+    (function (ms: number) {
+      _hoverScanTimers.push(setTimeout(function () {
+        if (bound && pointerOnManage) scanAll();
+      }, ms));
+    })(delays[j]);
+  }
 }
 
 function onClickCapture(e: MouseEvent): void {
@@ -381,7 +571,17 @@ function onClickCapture(e: MouseEvent): void {
     // aria-label).
     var mi = t.closest('[role="menuitem"]') || t.closest('.contextMenuItem');
     if (!manage && mi && matchTxt(mi.textContent, STR_MANAGE)) manage = mi;
-    if (!manage) return;
+    if (!manage) {
+      // Our own action rows: leave them for their click handler.
+      if (t.closest('[data-luma-manage]')) return;
+      // Any other click means a menu just closed (or was already stale).
+      // Steam reuses the same DOM element for every later menu — rows left
+      // inside would resurface everywhere (tabs, dropdowns, other games)
+      // because hiding a menu only toggles classes, which never fires our
+      // childList observers. Strip every document now.
+      hardStripAll();
+      return;
+    }
     interactAt = Date.now();
     var id = appIdFromNode(t) || lastHoverAppId;
     setContextApp(id);
@@ -454,6 +654,7 @@ function prefetchMenuData(appId: string): void {
   // own requests and this cache never saw those changes — a stale menuData
   // meant "Delete Lua" missing after a re-download (and vice versa) until
   // Steam restarted. dataSeq still guards out-of-order responses.
+  lastPrefetchAt = Date.now();
   var seq = ++dataSeq;
   menuData = { appId: appId, hasLua: false, hasPins: false, installed: false, ready: false };
   console.log('[LUMA_INJECT] Manage menu prefetch appid=' + appId);
@@ -533,6 +734,27 @@ function scanSkip(reason: string): void {
   console.log('[LUMA_INJECT] Manage menu scan skipped: ' + reason);
 }
 
+// One-line jsLog breadcrumb (throttled to 1/s) for remote debugging: when
+// identification fails on a PC, the proxy log shows what the scan actually
+// saw — visible menus, hover-window age (ms since hovering "Manage", -1 if
+// never/invalidated), tracked documents and the appid.
+var _lastJsFailAt = 0;
+function jsScanFail(d: Document, where: string): void {
+  var now = Date.now();
+  if (now - _lastJsFailAt < 1000) return;
+  _lastJsFailAt = now;
+  try {
+    var menus = d.querySelectorAll('.contextMenu, [role="menu"]');
+    var vis = 0;
+    for (var i = 0; i < menus.length; i++) if (isVisibleEl(menus[i])) vis++;
+    jsLog('scan fail[' + where + '] visMenus=' + vis + '/' + menus.length +
+      ' hoverAge=' + (manageHoverAt ? (now - manageHoverAt) : -1) +
+      ' ptr=' + (pointerOnManage ? 'Y' : 'N') +
+      ' row=' + (manageRowEl ? 'Y' : 'N') +
+      ' docs=' + (1 + popups.length) + ' appid=' + (ctxAppId || 'null'));
+  } catch (_) { }
+}
+
 function scanMenus(doc?: Document): void {
   var d: Document = doc || document;
   try {
@@ -576,6 +798,7 @@ function scanMenus(doc?: Document): void {
     // the whole document (the menu may live in a popup we cannot query by
     // class). Idle observers must not pay that cost.
     if (Date.now() - interactAt > 6000) {
+      jsScanFail(d, 'idle');
       scanSkip('class paths empty; no recent interaction (doc=' + JSON.stringify(d.title) + ')');
       return;
     }
@@ -602,6 +825,14 @@ function scanMenus(doc?: Document): void {
     if (tryAriaPath(d)) {
       _lastScanSkip = '';
       console.log('[LUMA_INJECT] Manage menu aria path OK: ' + menuDump(d));
+      return;
+    }
+
+    // Geometry path: on PCs whose menus have neither readable classes nor
+    // ARIA roles (visMenus=0/0), the hovered "Manage" row plus the position
+    // of the submenu that opened to its right is all we have — and enough.
+    if (tryGeometryPath(d)) {
+      _lastScanSkip = '';
       return;
     }
 
@@ -640,10 +871,98 @@ function scanMenus(doc?: Document): void {
       return;
     }
 
+    // Full scan failed: nothing in this doc is the Manage submenu. Drop the
+    // keep-list only when the container actually changed — hidden/gone, or
+    // its contents re-rendered (Steam reused the element for another menu,
+    // which is exactly when the rows become leftovers). An unchanged
+    // VISIBLE container is the submenu the user is navigating right now
+    // (every scan fails on the class-less PC): stripping it would delete
+    // the rows mid-interaction.
+    if (lastEnsured) {
+      var liveContents = resolveContents(d, lastEnsured);
+      if (!isVisibleEl(lastEnsured) || !liveContents ||
+        menuSig(liveContents) !== lastEnsuredSig) lastEnsured = null;
+    }
+    jsScanFail(d, 'final');
     scanSkip('no Manage menu in doc(' + JSON.stringify(d.title) + '); ' + menuDump(d));
   } catch (e) {
     console.warn('[LUMA_INJECT] Manage menu scan error:', e);
+  } finally {
+    // Steam reuses submenu DOM between triggers: any [data-luma-manage] row
+    // outside the last accepted container is a leftover from a previous
+    // hover (e.g. the "Add to" submenu reusing the just-closed Manage
+    // submenu element) and must go.
+    stripOrphans(d, lastEnsured);
   }
+}
+
+// Remove our injected rows from every place except the last accepted menu /
+// contents container. Per-document, so a skip scan in one document never
+// touches items that live in another.
+var STRIP_MIN_AGE_MS = 1500;
+
+// Immediate cleanup of every row in every reachable document, ignoring the
+// age immunity: fired when the user clicks (a menu closed) or right-clicks
+// a different app. This is the primary defense against Steam's DOM reuse —
+// the childList observers never see a menu close (class toggle only).
+function hardStripAll(): void {
+  try {
+    var docs: Document[] = [document];
+    for (var i = 0; i < popups.length; i++) {
+      var pd = popups[i].doc;
+      if (pd && docs.indexOf(pd) === -1) docs.push(pd);
+    }
+    var removed = 0;
+    for (var k = 0; k < docs.length; k++) {
+      var items = docs[k].querySelectorAll('[data-luma-manage]');
+      for (var j = 0; j < items.length; j++) { items[j].remove(); removed++; }
+    }
+    lastEnsured = null;
+    lastEnsuredSig = '';
+    manageHoverAt = 0;
+    manageRowEl = null;
+    pointerOnManage = false;
+    if (removed) {
+      console.log('[LUMA_INJECT] Manage menu hard strip: ' + removed + ' rows');
+      jsLog('MENU hard strip: ' + removed + ' rows');
+    }
+  } catch (_) { }
+}
+
+// Shape snapshot of a contents container: children count + first row text.
+// Steam reusing the element for another menu re-renders those, changing the
+// signature — that is the signal to drop lastEnsured (and strip) even when
+// the container is still visible.
+function menuSig(el: Element | null): string {
+  if (!el) return '';
+  try {
+    var fc = el.firstElementChild;
+    return el.childElementCount + '|' + (fc ? (fc.textContent || '').trim().slice(0, 30) : '');
+  } catch (_) { return '?'; }
+}
+function stripOrphans(d: Document, keep: Element | null): void {
+  try {
+    var items = d.querySelectorAll('[data-luma-manage]');
+    var removed: string[] = [];
+    var now = Date.now();
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i] as HTMLElement;
+      if (keep && (it === keep || (keep.contains && keep.contains(it)))) continue;
+      // Fresh rows are IMMUNE: a scan that fails to identify the submenu
+      // right after an inject must never delete what was just injected —
+      // that accept/fail alternation is what caused the inject/strip
+      // memory loop that crashed Steam. Only stale leftovers (rows left in
+      // a DOM element Steam reused for another submenu) get removed.
+      var at = parseInt(it.getAttribute('data-luma-at') || '0', 10);
+      if (at && now - at < STRIP_MIN_AGE_MS) continue;
+      removed.push(it.getAttribute('data-luma-manage') || '?');
+      it.remove();
+    }
+    if (removed.length) {
+      console.log('[LUMA_INJECT] Manage menu orphans removed: ' + removed.join(','));
+      jsLog('MENU orphans removed: ' + removed.join(','));
+    }
+  } catch (_) { }
 }
 
 // Exact-text row search → { contents, proto }. Installed games always render
@@ -693,12 +1012,90 @@ function tryAriaPath(d: Document): boolean {
     var t = (el.getAttribute('aria-label') || el.textContent || '').trim();
     if (!matchTxt(t, STR_MANAGE)) continue;
     var cid = el.getAttribute('aria-controls');
-    var target = cid ? d.getElementById(cid) : null;
+    var target = cid ? resolveIdAnyDoc(d, cid) : null;
     if (!target || !isVisibleEl(target)) continue;
     var contents = resolveContents(d, target);
-    if (contents) { ensureItems(d, contents, null); return true; }
+    if (contents) {
+      // Steam can REUSE the trigger's aria-controls target for a different
+      // submenu ("Add to" / "Remove from"). If the contents now declare a
+      // non-Manage label, they are not the Manage submenu — reject instead
+      // of relying on the structural resolveContents fallback.
+      var lbEl = (contents.getAttribute && contents.getAttribute('aria-labelledby'))
+        ? contents : contents.querySelector('[aria-labelledby]');
+      if (lbEl) {
+        var lbId = lbEl.getAttribute('aria-labelledby');
+        var lbNode = lbId ? resolveIdAnyDoc(d, lbId) : null;
+        if (lbNode && !matchTxt(lbNode.textContent, STR_MANAGE)) continue;
+      }
+      ensureItems(d, contents, null);
+      return true;
+    }
   }
   return false;
+}
+
+// Hover path for PCs where the menu container has neither readable classes
+// nor roles (visMenus=0/0): the "Manage" trigger row still exists (its exact
+// text sets manageRowEl on hover) and the submenu is a small box of
+// [role="menuitem"] rows positioned near that row (the other PC's menuDump:
+// roleMenuItem=13 with zero .contextMenu / role=menu). Gated on the pointer
+// being ON the Manage row right now, SAME document only (rects from
+// different windows are incomparable), with a generous band — ±60px top and
+// within 700px on either side, because Steam flips submenus leftward near
+// the screen edge.
+function tryGeometryPath(d: Document): boolean {
+  if (!pointerOnManage) return false;
+  if (Date.now() - manageHoverAt > 2000) return false;
+  var row = manageRowEl as HTMLElement | null;
+  if (!row || !isVisibleEl(row)) return false;
+  if (row.ownerDocument !== d) return false;
+  var rr = row.getBoundingClientRect();
+  if (!rr || (!rr.width && !rr.height)) return false;
+  var cands = d.querySelectorAll('div, ul, table');
+  var best: HTMLElement | null = null;
+  var bestGap = 1e9;
+  var bestArea = 1e9;
+  for (var i = 0; i < cands.length; i++) {
+    var el = cands[i] as HTMLElement;
+    // Skip the row itself, its ancestors (the root menu holds it, so the
+    // root can never be a candidate) and its descendants.
+    if (el === row || row.contains(el) || el.contains(row)) continue;
+    var t = (el.textContent || '').trim();
+    if (!t || t.length >= 250) continue;
+    if (matchTxt(t, STR_MANAGE)) continue;
+    if (el.querySelector('[data-luma-manage]')) continue;
+    if (!isVisibleEl(el)) continue;
+    // Real menu box: at least one menu-item row. This is the only structural
+    // signal the class-less PC leaves on the submenu.
+    if (!el.querySelector('[role="menuitem"], .contextMenuItem')) continue;
+    var r = el.getBoundingClientRect();
+    if (!r.width || !r.height) continue;
+    // Vertical band: top-aligned with the Manage row within ±60px (adjacent
+    // triggers sit ~40px off, but their submenu can only open when its own
+    // trigger is hovered — which zeroes pointerOnManage).
+    if (r.top < rr.top - 60 || r.top > rr.top + 60) continue;
+    // Horizontal gap on either side (right = normal, left = edge flip);
+    // overlapping counts as 0.
+    var gap: number;
+    if (r.left >= rr.right - 4) gap = r.left - rr.right;
+    else if (r.right <= rr.left + 4) gap = rr.left - r.right;
+    else gap = 0;
+    if (gap > 700) continue;
+    var area = r.width * r.height;
+    // Closest wins beyond ±40px; within that band the smaller element wins
+    // (the inner contents box over a positioned wrapper).
+    if (gap < bestGap - 40 || (gap <= bestGap + 40 && area < bestArea)) {
+      if (gap < bestGap) bestGap = gap;
+      bestArea = area;
+      best = el;
+    }
+  }
+  if (!best) return false;
+  if (!resolveContents(d, best)) return false;
+  ensureItems(d, best, best.firstElementChild as HTMLElement | null);
+  console.log('[LUMA_INJECT] Manage menu geometry path OK (gap=' +
+    Math.round(bestGap) + ' area=' + Math.round(bestArea) + '): ' + menuDump(d));
+  return true;
 }
 
 function isManageMenu(d: Document, menu: Element): boolean {
@@ -714,8 +1111,13 @@ function isManageMenu(d: Document, menu: Element): boolean {
   var lb = contents && (contents.getAttribute('aria-labelledby') ||
     (menu.getAttribute && menu.getAttribute('aria-labelledby')));
   if (lb) {
-    var lbl = d.getElementById(lb) || menu.ownerDocument.getElementById(lb);
-    if (lbl && matchTxt(lbl.textContent, STR_MANAGE)) return true;
+    var lbl = resolveIdAnyDoc(d, lb);
+    // A declared label is a verdict: anything but "Manage" (e.g. "Add to" /
+    // "Remove from") means this submenu is not ours — never fall through to
+    // the hover fallback, which would accept it while the Manage hover is
+    // still fresh. If the id does not resolve (cross-window label), keep
+    // going: the fallbacks below cover it.
+    if (lbl) return matchTxt(lbl.textContent, STR_MANAGE);
   }
   // Hover fallback, structurally gated: right after hovering "Manage" the
   // submenu that opens is accepted only when it is LINKED to the menu that
@@ -723,6 +1125,10 @@ function isManageMenu(d: Document, menu: Element): boolean {
   // wrapper with no other visible menu in between). The previous version
   // accepted ANY small visible menu within the 2s window, which is how our
   // items leaked into every other menu (supernavs, root menus, notifications).
+  // The pointer must additionally be ON the Manage row right now: moving to
+  // "Add to" (whose submenu is linked exactly like ours) zeroes this and the
+  // fallback rejects it, whatever the window says.
+  if (!pointerOnManage) return false;
   if (Date.now() - manageHoverAt > 2000) return false;
   if (t.length >= 400) return false;
   var items = menu.querySelectorAll('.contextMenuItem, [role="menuitem"]');
@@ -730,7 +1136,7 @@ function isManageMenu(d: Document, menu: Element): boolean {
   for (var i = 0; i < items.length; i++) {
     if (matchTxt(items[i].textContent, STR_MANAGE)) return false; // the parent/root menu itself
   }
-  return linkedManageSubmenu(d, menu);
+  return linkedManageSubmenu(d, menu) || linkedManageSubmenuAnyDoc(d, menu);
 }
 
 // Is `menu` the submenu opened from a visible menu that hosts a "Manage"
@@ -771,6 +1177,58 @@ function menuHasManageRow(m: Element): boolean {
   return false;
 }
 
+// Some PCs render the root menu and its hover submenu in SEPARATE popup
+// windows: the "Manage" trigger the user hovered lives in one document and
+// the submenu that opens is in another, so neither the sibling structure
+// nor aria ids can link them in-document. Within the hover window, any small
+// visible menu without a "Manage" row (checked by the caller) is accepted
+// when a sibling document still shows the visible "Manage" root it opened
+// from. Moving the pointer to another root entry clears manageHoverAt (see
+// onMouseOver), so this cannot catch "Add to" / "Remove from" submenus.
+function linkedManageSubmenuAnyDoc(d: Document, menu: Element): boolean {
+  if (Date.now() - manageHoverAt > 2000) return false;
+  var roots: Document[] = [document];
+  for (var i = 0; i < popups.length; i++) {
+    var pd = popups[i].doc;
+    if (pd && roots.indexOf(pd) === -1) roots.push(pd);
+  }
+  for (var r = 0; r < roots.length; r++) {
+    var rd = roots[r];
+    if (rd === d) continue;
+    var ms = rd.querySelectorAll('.contextMenu, [role="menu"]');
+    for (var m = 0; m < ms.length; m++) {
+      if (!isVisibleEl(ms[m])) continue;
+      if (menuHasManageRow(ms[m])) {
+        console.log('[LUMA_INJECT] Manage submenu accepted via cross-window link');
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// aria-controls/aria-labelledby ids may live in a different document when
+// Steam renders a menu in a separate popup window. Look the id up in the
+// scanned document, the bound main document and every tracked popup.
+function resolveIdAnyDoc(d: Document, id: string): Element | null {
+  try {
+    var el = d.getElementById(id);
+    if (el) return el;
+    if (d !== document) {
+      el = document.getElementById(id);
+      if (el) return el;
+    }
+    for (var i = 0; i < popups.length; i++) {
+      var pd = popups[i].doc;
+      if (pd && pd !== d) {
+        el = pd.getElementById(id);
+        if (el) return el;
+      }
+    }
+  } catch (_) { }
+  return null;
+}
+
 // Resolve the item container from a menu/contents/submenu-root candidate:
 // known class, aria-labelledby → "Manage", role=menuitem children, or a
 // box of several short rows.
@@ -779,13 +1237,13 @@ function resolveContents(d: Document, menu: Element): HTMLElement | null {
   if (byClass) return byClass as HTMLElement;
   var lbSelf = menu.getAttribute && menu.getAttribute('aria-labelledby');
   if (lbSelf) {
-    var l0 = d.getElementById(lbSelf);
+    var l0 = resolveIdAnyDoc(d, lbSelf);
     if (l0 && matchTxt(l0.textContent, STR_MANAGE)) return menu as HTMLElement;
   }
   var byLb = menu.querySelector('[aria-labelledby]');
   if (byLb) {
     var lb2 = byLb.getAttribute('aria-labelledby');
-    var l1 = lb2 ? d.getElementById(lb2) : null;
+    var l1 = lb2 ? resolveIdAnyDoc(d, lb2) : null;
     if (l1 && matchTxt(l1.textContent, STR_MANAGE)) return byLb as HTMLElement;
   }
   if (menu.querySelector('[role="menuitem"]')) return menu as HTMLElement;
@@ -831,10 +1289,12 @@ function actionLabel(action: string): string {
 function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null): void {
   var md = menuData;
   if (!md || !md.ready || !ctxAppId || md.appId !== ctxAppId) return;
+  lastEnsured = menu;
   // Contents container: known class, aria-labelledby → Manage, then
   // structural fallbacks (row path passes the container directly).
   var contents = resolveContents(d, menu);
   if (!contents) {
+    lastEnsuredSig = menuSig(menu);
     scanSkip('Manage submenu has no contents container (role menuitem=' +
       menu.querySelectorAll('[role="menuitem"]').length + ')');
     return;
@@ -849,7 +1309,7 @@ function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null)
       if (existing[k].getAttribute('data-luma-manage') !== desired[k]) { same = false; break; }
     }
   }
-  if (same) return;
+  if (same) { lastEnsuredSig = menuSig(contents); return; }
   for (var j = 0; j < existing.length; j++) existing[j].remove();
 
   // Proto row to clone: the row path hands us the exact matching row
@@ -886,6 +1346,7 @@ function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null)
   }
   if (anchor) contents.insertBefore(frag, anchor);
   else contents.appendChild(frag);
+  lastEnsuredSig = menuSig(contents);
   console.log('[LUMA_INJECT] Manage menu items injected: ' + desired.join(',') +
     ' appid=' + ctxAppId + ' anchor=' + (anchor ? 'separator' : 'end') +
     ' proto=' + (proto ? JSON.stringify(protoClass.slice(0, 60)) : 'none') +
@@ -917,6 +1378,7 @@ function makeItem(
   item.setAttribute('role', 'menuitem');
   item.setAttribute('tabindex', '-1');
   item.setAttribute('data-luma-manage', action);
+  item.setAttribute('data-luma-at', String(Date.now()));
   item.style.cursor = 'pointer';
   if (protoLabelClass) {
     var lbl = d.createElement('div');
@@ -954,6 +1416,102 @@ function closeMenu(menu: Element | null): void {
   }
 }
 
+// Mount the fixes modal in the MAIN library window. The row's click handler
+// runs in whichever injected realm created the row — menus render as
+// IFRAMEs (opener = null, top/parent = the library window) on some PCs and
+// as window.open popups (opener = creator) on others, so probe the chain
+// topmost-first: top, opener-of-opener, parent, opener, then self. Same
+// origin throughout (steamloopback), so the direct property read works; a
+// cross-origin read that throws falls back to postMessage (the listener
+// installed by startManageMenu opens it in the receiver's document).
+function mountFixesModal(appId: string): void {
+  var cands: any[] = [];
+  var tags: string[] = [];
+  function add(w: any, tag: string): void {
+    try {
+      if (!w) return;
+      for (var i = 0; i < cands.length; i++) if (cands[i] === w) return;
+      cands.push(w);
+      tags.push(tag);
+    } catch (_) { }
+  }
+  // Saved references (captured at startManageMenu while .opener was alive)
+  // come first: Steam nulls window.opener after popup setup on some builds,
+  // which would otherwise drop the main library window from this list.
+  try { add(window.top, 'top'); } catch (_) { }
+  try { add(_bindOpener2, 'bOpener2'); } catch (_) { }
+  try { add(window.opener && (window.opener as any).opener, 'opener2'); } catch (_) { }
+  try { add(window.parent, 'parent'); } catch (_) { }
+  try { add(_bindOpener, 'bOpener'); } catch (_) { }
+  try { add(window.opener, 'opener'); } catch (_) { }
+  // Self-mount only from a real library window: menu popup realms (named
+  // contextmenu_*) mount into a window that closes right after the click,
+  // which is why the modal "disappeared" or "appeared by the tray icon".
+  // Those realms broadcast instead and the visible library window answers.
+  var selfOk = true;
+  try {
+    if (!isLibrarySurface()) selfOk = false;
+    if (window.name && window.name.indexOf('contextmenu_') === 0) selfOk = false;
+  } catch (_) { }
+  if (selfOk) { try { add(window, 'self'); } catch (_) { } }
+  var threwNonSelf = false;
+  var postTargets: any[] = [];
+  var exp: string[] = [];
+  for (var i = 0; i < cands.length; i++) {
+    if (cands[i] === window) continue;
+    try {
+      var f = cands[i].__lumaFixesMount;
+      if (typeof f === 'function') {
+        jsLog('fixes mount via=' + tags[i]);
+        f(appId);
+        return;
+      }
+      exp.push(tags[i] + ':N');
+    } catch (_) {
+      threwNonSelf = true; postTargets.push(cands[i]); exp.push(tags[i] + ':T');
+    }
+  }
+  // One diagnostic line: which realm owns the row (self href), whether .opener
+  // survived until click time, and what the saved opener chain actually holds.
+  var savedHref = 'X';
+  try { savedHref = String((_bindOpener && _bindOpener.location && _bindOpener.location.href) || 'NONE'); savedHref = savedHref.slice(0, 70); } catch (_) { savedHref = 'X'; }
+  var diag = 'fixes chain self=' + location.href.slice(0, 70) +
+    ' name=' + (window.name || '-') +
+    ' focus=' + (document.hasFocus() ? 'Y' : 'N') +
+    ' selfOk=' + (selfOk ? 'Y' : 'N') +
+    ' openerClick=' + (window.opener ? 'Y' : 'N') +
+    ' saved=' + (_bindOpener ? 'Y' : 'N') +
+    ' savedHref=' + savedHref +
+    ' exp=' + (exp.join(',') || 'none') +
+    (threwNonSelf ? ' threw=Y' : '');
+  jsLog(diag);
+  console.log('[LUMA_INJECT] ' + diag);
+  if (threwNonSelf && postTargets.length) {
+    try {
+      postTargets[0].postMessage({ __lumaFixesOpen: appId }, '*');
+      jsLog('fixes mount via=postmessage');
+      return;
+    } catch (_) { }
+  }
+  if (selfOk) {
+    jsLog('fixes mount via=self');
+    openFixesModal(appId);
+    return;
+  }
+  // Owning realm is a menu popup (or not a library surface): elect the
+  // visible library window over BroadcastChannel instead of mounting into a
+  // window that is about to close.
+  var bcOk = false;
+  try {
+    var bc = new BroadcastChannel('lumaforge-fixes');
+    bc.postMessage({ __lumaFixesOpen: appId });
+    try { bc.close(); } catch (_) { }
+    bcOk = true;
+  } catch (_) { }
+  if (bcOk) jsLog('fixes mount via=broadcast-emit');
+  else jsLog('fixes mount via=blocked');
+}
+
 function handleAction(action: string, item: HTMLElement): void {
   var appId = ctxAppId;
   console.log('[LUMA_INJECT] ACTION begin action=' + action + ' appId=' + appId);
@@ -969,7 +1527,7 @@ function handleAction(action: string, item: HTMLElement): void {
 
   if (action === 'fixes') {
     closeMenu(menu);
-    openFixesModal(appId);
+    mountFixesModal(appId);
     return;
   }
 

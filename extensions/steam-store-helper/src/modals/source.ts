@@ -27,7 +27,16 @@ export function closeModal(): void {
       state.fixesModalState = null;
     }
     var m = document.querySelector('[' + MODAL_MARKER_ATTR + '="' + MODAL_MARKER_VAL + '"]');
-    if (m) m.remove();
+    if (m) {
+      // Who removed it: a stray closeModal() explains "opened then vanished".
+      var st = '';
+      try {
+        st = String(new Error('x').stack || '').split('\n').slice(2, 6)
+          .join(' | ').replace(/\s+/g, ' ').slice(0, 420);
+      } catch (_) { }
+      console.log('[LUMA_INJECT] closeModal removing modal <- ' + st);
+      m.remove();
+    }
     if (state.savedFocusElement && (state.savedFocusElement as any).isConnected) {
       (state.savedFocusElement as HTMLElement).focus();
     }
