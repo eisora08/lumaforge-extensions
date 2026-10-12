@@ -76,12 +76,6 @@ export function activate(): void {
     if (isLibrarySurface()) startManageMenu();
     ensureLumaButtonExists();
     ensureSettingsButton();
-    console.log('[LUMA_RUNTIME] librarySurface=' + isLibrarySurface() +
-      ' gear=' + !!document.getElementById('luma-ssh-settings-btn') +
-      ' hasRoot=' + !!document.getElementById('root') +
-      ' hasPopupTarget=' + !!document.getElementById('popup_target') +
-      ' title=' + JSON.stringify(document.title) +
-      ' bodyClass=' + (document.body ? document.body.className : 'n/a'));
     detectBridgePort();
     syncNamespaceState();
     // Sync this origin's local download history to the bridge queue file so
@@ -89,16 +83,24 @@ export function activate(): void {
     pushHistoryToBridge();
     // Auto-start next queued download on activation
     fetch(bridgeUrl('/api/downloads-queue/start-next'), { method: 'POST', mode: 'cors', cache: 'no-store' }).catch(function() {});
-    console.log('[LUMA_RUNTIME] Version:', LUMA_INJECT_VERSION);
-    console.log('[LUMA_RUNTIME] Target URL:', window.location.href);
-    console.log('[LUMA_RUNTIME] Document ID:', state.documentId);
-    console.log('[LUMA_RUNTIME] Lifecycle already existed: false');
-    console.log('[LUMA_RUNTIME] Existing lifecycle version: none');
-    console.log('[LUMA_RUNTIME] Active:', true);
-    console.log('[LUMA_RUNTIME] Current AppID:', state.currentAppId);
-    console.log('[LUMA_RUNTIME] Reconcile count:', state.reconcileCount);
-    console.log('[LUMA_RUNTIME] Observer active:', !!state.observer);
-    console.log('[LUMA_RUNTIME] History wrapped:', state.historyPatched);
+    // One init line instead of the former 11-line block (~275 lines per
+    // session): version, surface, url/doc, appid, reconcile, observer and
+    // history/delegation state for remote debugging.
+    console.log('[LUMA_RUNTIME] init v=' + LUMA_INJECT_VERSION +
+      ' lib=' + isLibrarySurface() +
+      ' gear=' + !!document.getElementById('luma-ssh-settings-btn') +
+      ' root=' + !!document.getElementById('root') +
+      ' popupTarget=' + !!document.getElementById('popup_target') +
+      ' title=' + JSON.stringify(document.title) +
+      ' bodyClass=' + (document.body ? document.body.className : 'n/a') +
+      ' url=' + window.location.href +
+      ' docId=' + state.documentId +
+      ' appid=' + state.currentAppId +
+      ' rec=' + state.reconcileCount +
+      ' obs=' + !!state.observer +
+      ' obsRoot=' + (state.observerRoot ? state.observerRoot.nodeName : 'none') +
+      ' hist=' + state.historyPatched +
+      ' deleg=' + _delegActive);
   } catch (e) { console.error('[CEF_INJECT_ERROR] activate:', e); }
 }
 
@@ -133,6 +135,7 @@ export function logModalHorizontalOverflow(): void {
 // ---------------------------------------------------------------------------
 // Event delegation
 // ---------------------------------------------------------------------------
+var _delegActive = false;
 function setupEventDelegation(): void {
   try {
     document.body.addEventListener('click', function (e) {
@@ -211,7 +214,7 @@ function setupEventDelegation(): void {
       } catch (_) { }
     }, true);
 
-    console.log('[LUMA_INJECT] Event delegation active on document.body');
+    _delegActive = true;
   } catch (e) {
     console.error('[CEF_INJECT_ERROR] setupEventDelegation:', e);
   }

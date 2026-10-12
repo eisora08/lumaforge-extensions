@@ -37,6 +37,9 @@ export function retryFetch(
   hooks?: {
     appId?: string;
     beforeAttempt?: (attemptNum: number) => boolean;
+    // High-volume labels (sidebar art) skip the routine attempt/succeeded
+    // pair; failures and retries still log loudly for remote debugging.
+    quiet?: boolean;
   }
 ): Promise<Response> {
   hooks = hooks || {};
@@ -50,14 +53,14 @@ export function retryFetch(
       return Promise.reject(new DOMException('Context invalidated', 'AbortError'));
     }
 
-    console.log('[LUMA_BRIDGE] ' + label + ' attempt ' + attemptNum + (hooks.appId ? ' for AppID: ' + hooks.appId : ''));
+    if (!hooks.quiet) console.log('[LUMA_BRIDGE] ' + label + ' attempt ' + attemptNum + (hooks.appId ? ' for AppID: ' + hooks.appId : ''));
 
     return fetch(url, opts)
       .then(function (r) {
         if (opts && opts.signal && (opts.signal as AbortSignal).aborted) {
           throw new DOMException('Aborted', 'AbortError');
         }
-        console.log('[LUMA_BRIDGE] ' + label + ' succeeded' + (hooks.appId ? ' for AppID: ' + hooks.appId : ''));
+        if (!hooks.quiet) console.log('[LUMA_BRIDGE] ' + label + ' succeeded' + (hooks.appId ? ' for AppID: ' + hooks.appId : ''));
         return r;
       })
       .catch(function (err) {

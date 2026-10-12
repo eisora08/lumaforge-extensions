@@ -25,7 +25,12 @@ function bootstrap(): void {
     // namespace here used to spawn parallel lifecycles with split state
     // (duplicate observers/listeners, Active Now tracking a different state).
     if ((window as any)[NAMESPACE] && (window as any)[NAMESPACE].version === LUMA_INJECT_VERSION) {
-      console.log('[LUMA_RUNTIME] Same-version lifecycle already present, skipping duplicate injection');
+      // Once per document: the proxy re-evaluates this script on every
+      // probe (64 duplicate injections in one session).
+      if (!(window as any).__lumaSameVersionLogged) {
+        (window as any).__lumaSameVersionLogged = true;
+        console.log('[LUMA_RUNTIME] Same-version lifecycle already present, skipping duplicate injection');
+      }
       if ((window as any)[NAMESPACE].active && typeof (window as any)[NAMESPACE].scheduleReconcile === 'function') {
         (window as any)[NAMESPACE].scheduleReconcile('reinjection');
       }

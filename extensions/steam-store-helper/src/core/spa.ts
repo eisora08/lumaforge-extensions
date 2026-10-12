@@ -5,6 +5,13 @@ import { closeModal } from '../modals/source';
 import { ensureSettingsButton } from '../modals/settings';
 import { openSidebar } from '../sidebar/SidebarPanel';
 
+// Last logged button state — store pages reconcile on every mutation frame;
+// logging the unchanged attribute each time was pure log spam.
+var _lastBtnState: string | null | undefined;
+// Per-AppID dedupe for the "button missing" scan note: it repeated on every
+// mutation frame for the same app (66x/50x per session for two messages).
+var _btnMissingLogged: Record<string, boolean> = {};
+
 // ---------------------------------------------------------------------------
 // Reconcile: detect URL/AppID changes and update controls
 // ---------------------------------------------------------------------------
@@ -32,25 +39,28 @@ export function reconcile(): void {
     return;
   }
 
-  console.log('[LUMA_WATCHER] Reconcile start');
-  console.log('[LUMA_WATCHER] Current URL:', url);
-  console.log('[LUMA_WATCHER] Previous URL:', prevUrl);
-  console.log('[LUMA_WATCHER] Parsed AppID:', appId);
-  console.log('[LUMA_WATCHER] Previous AppID:', prevAppId);
-  console.log('[LUMA_WATCHER] Document ID:', state.documentId);
+  // Store pages repaint constantly: reconcile runs on every rAF batch, so
+  // the header is logged only when the URL or AppID actually changed — the
+  // same six lines used to dominate the session log (~200x per visit).
+  if (url !== prevUrl || appId !== prevAppId) {
+    console.log('[LUMA_WATCHER] Reconcile start');
+    console.log('[LUMA_WATCHER] Current URL:', url);
+    console.log('[LUMA_WATCHER] Previous URL:', prevUrl);
+    console.log('[LUMA_WATCHER] Parsed AppID:', appId);
+    console.log('[LUMA_WATCHER] Previous AppID:', prevAppId);
+    console.log('[LUMA_WATCHER] Document ID:', state.documentId);
+  }
 
   state.currentUrl = url;
 
-  // Check observer root connectivity
-  if (state.observer && state.observerRoot) {
-    var connected = state.observerRoot.isConnected;
-    console.log('[LUMA_WATCHER] Observer root connected:', connected);
-    if (!connected) {
-      console.log('[LUMA_WATCHER] Reattached observer after root replacement');
-      state.observer.disconnect();
-      state.observerRoot = getObserverRoot();
-      state.observer.observe(state.observerRoot, { childList: true, subtree: true });
-    }
+  // Check observer root connectivity — log only the failure case (the
+  // healthy "connected: true" printed on every reconcile before).
+  if (state.observer && state.observerRoot && !state.observerRoot.isConnected) {
+    console.log('[LUMA_WATCHER] Observer root disconnected, reattaching');
+    state.observer.disconnect();
+    state.observerRoot = getObserverRoot();
+    state.observer.observe(state.observerRoot, { childList: true, subtree: true });
+    console.log('[LUMA_WATCHER] Reattached observer after root replacement');
   }
 
   // Not on an app page
@@ -91,14 +101,20 @@ export function reconcile(): void {
   // Same App ID — check if button still exists and its state
   var existingBtn = document.getElementById(BTN_ID);
   if (!existingBtn || existingBtn.getAttribute(BTN_APPID_ATTR) !== appId) {
-    console.log('[LUMA_WATCHER] Button missing for same AppID:', appId);
+    if (!_btnMissingLogged[appId]) {
+      _btnMissingLogged[appId] = true;
+      console.log('[LUMA_WATCHER] Button missing for same AppID:', appId);
+    }
     ensureLumaButtonExists();
     syncNamespaceState();
     return;
   }
 
   var existingState = existingBtn.getAttribute('data-lumaforge-state');
-  console.log('[LUMA_WATCHER] Existing button state:', existingState);
+  if (existingState !== _lastBtnState) {
+    console.log('[LUMA_WATCHER] Existing button state:', existingState);
+    _lastBtnState = existingState;
+  }
 
   if (existingState === 'bridge-error' || existingState === 'request-error') {
     if (state.recoveryTimer) {
@@ -158,8 +174,8 @@ export function startObserver(): void {
       scheduleReconcile('dom');
     });
     state.observer.observe(state.observerRoot, { childList: true, subtree: true });
-    console.log('[LUMA_WATCHER] MutationObserver attached to', state.observerRoot.nodeName);
-    console.log('[LUMA_WATCHER] Observer root:', state.observerRoot.nodeName);
+    // Initial attach state is reported by the single '[LUMA_RUNTIME] init'
+    // line in lifecycle.ts; reattach events below keep their own logs.
   } catch (e) { console.error('[CEF_INJECT_ERROR] startObserver:', e); }
 }
 
@@ -173,7 +189,10 @@ export function scheduleReconcile(reason: string): void {
   try {
     if (!state.activated || state._rafPending) return;
     state._rafPending = true;
-    console.log('[LUMA_WATCHER] DOM reconciliation requested:', reason);
+    // 'dom' fires on every mutation batch in the constantly-repainting
+    // store (hundreds per session) and 'pageshow' on every document load —
+    // both are benign; real navigation reasons stay logged.
+    if (reason !== 'dom' && reason !== 'pageshow') console.log('[LUMA_WATCHER] DOM reconciliation requested:', reason);
     requestAnimationFrame(function () {
       state._rafPending = false;
       if (!state.activated) return;
@@ -211,7 +230,6 @@ export function patchHistory(): void {
       scheduleReconcile('hashchange');
     };
     state.pageshowHandler = function () {
-      console.log('[LUMA_WATCHER] pageshow');
       scheduleReconcile('pageshow');
     };
     state.pagehideHandler = function () {
@@ -226,7 +244,7 @@ export function patchHistory(): void {
     window.addEventListener('pagehide', state.pagehideHandler);
     window.addEventListener('beforeunload', state.beforeunloadHandler);
     state.historyPatched = true;
-    console.log('[LUMA_WATCHER] SPA navigation hooks installed');
+    // 'SPA navigation hooks installed' dropped: the init line reports hist=true.
   } catch (e) { console.error('[CEF_INJECT_ERROR] patchHistory:', e); }
 }
 

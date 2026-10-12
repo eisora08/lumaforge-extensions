@@ -407,6 +407,10 @@ export function checkLocalStatus(appId: string, cb: (err: any, data: any, appId:
 // ---------------------------------------------------------------------------
 // CORE: ensureLumaButtonExists()
 // ---------------------------------------------------------------------------
+// Per-AppID dedupe: the "no purchase section" note repeated on every
+// mutation frame for the same app (66 lines per session).
+var _noPurchaseLogged: Record<string, boolean> = {};
+
 export function ensureLumaButtonExists(): void {
   try {
     if (isLibrarySurface()) return;
@@ -419,7 +423,10 @@ export function ensureLumaButtonExists(): void {
     }
 
     if (!hasPurchaseSection() || isDlcPage()) {
-      console.log('[LUMA_WATCHER] No purchase section or DLC page, skipping AppID:', appId);
+      if (!_noPurchaseLogged[appId]) {
+        _noPurchaseLogged[appId] = true;
+        console.log('[LUMA_WATCHER] No purchase section or DLC page, skipping AppID:', appId);
+      }
       removeButton();
       return;
     }
