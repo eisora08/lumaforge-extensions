@@ -52,13 +52,25 @@ var pointerOnManage = false;
 // Last prefetchMenuData() start; setContextApp uses it to collapse bursts
 // of same-app contextmenu re-dispatches into a single bridge round-trip.
 var lastPrefetchAt = 0;
-// Last pointer interaction (any hover/click/right-click in a bound doc).
-// The class-agnostic heavy paths (whole-doc row search) only run within a
-// few seconds of activity so idle MutationObserver churn stays cheap.
-var interactAt = 0;
-// Last scanMenus() skip reason — logged only when it changes (scan runs on
-// every popup mutation, logging every call would flood the console).
+// Last menu-specific cue: a "Manage" hover, a right-click that opened a
+// root menu, or a click on the "Manage" trigger. Generic pointer activity
+// is NOT a cue (any mouseover refreshes it) — only these events mean a
+// menu is opening/open, which is the sole condition under which the heavy
+// class-agnostic whole-doc paths can match. Gating on generic activity made
+// idle hovering run that sweep on every scan, failing ~1/s (scan fail[final]
+// was the top proxy-log line).
+var menuCueAt = 0;
+// One beacon per menu popup realm so the proxy log shows every realm that
+// loaded the script and which of them runs the scanner; repeated
+// startManageMenu calls in popup realms stay quiet after the first.
+var _popupRealmNoted = false;
+// Skip-log dedupe, two tiers. Realm-wide reasons (no menuData/no ctxAppId)
+// collapse into this single slot: one line per state change. Document-
+// specific reasons (they embed the doc title) go into a per-document map —
+// a 13-doc sweep alternates titles every scan, so a single-slot dedupe
+// never settled and printed ~2000 lines per 3 minutes.
 var _lastScanSkip = '';
+var _skipByDoc: WeakMap<Document, string> = new WeakMap();
 // Menu/contents container that last received (or confirmed) our items;
 // stripOrphans() keeps only this one and removes [data-luma-manage] rows
 // everywhere else (Steam reuses submenu DOM between triggers, so rows left
@@ -198,6 +210,7 @@ export function startManageMenu(): void {
         try {
           var d: any = ev.data;
           if (d && d.__lumaFixesOpen) {
+            if (window.name && window.name.indexOf('PopupWindow_') === 0) return;
             jsLog('fixes mount via=message');
             openFixesModal(String(d.__lumaFixesOpen));
           }
@@ -219,13 +232,45 @@ export function startManageMenu(): void {
         try {
           var d: any = ev.data;
           if (!d || !d.__lumaFixesOpen) return;
-          if (!isLibrarySurface()) return;
-          if (window.name && window.name.indexOf('contextmenu_') === 0) return;
-          jsLog('fixes mount via=broadcast');
+            if (!isLibrarySurface()) return;
+            if (window.name && window.name.indexOf('contextmenu_') === 0) return;
+            if (window.name && window.name.indexOf('PopupWindow_') === 0) return;
+            jsLog('fixes mount via=broadcast');
           openFixesModal(String(d.__lumaFixesOpen));
         } catch (_) { }
       };
     } catch (_) { }
+  }
+  // Menu popup realms (window.name "contextmenu_N" on older builds,
+  // "PopupWindow_*" on current ones) are script-bearing too
+  // and until now ran a full scanner stack of their own: listeners on every
+  // document they track, g_PopupManager sweeps, popup observers and a 1s
+  // tick. Every menu event therefore fired in all 13 realms at once — 13
+  // duplicate bridge prefetches per right-click ("MENU data" x13 within
+  // 6ms in the session log) and 13 realms racing to inject the same rows,
+  // which made the fixes-modal mount depend on which realm won the race.
+  // The library window already tracks every document these realms see (the
+  // same g_PopupManager through the opener chain, plus its own window.open
+  // wrap) and injects there alone; popup realms keep only the
+  // fixes-modal plumbing above (window export + message + broadcast).
+  var isMenuPopup = false;
+  try {
+    isMenuPopup =
+      window.name.indexOf('contextmenu_') === 0
+      || window.name.indexOf('PopupWindow_') === 0;
+  } catch (_) { }
+  if (isMenuPopup) {
+    if (!_popupRealmNoted) {
+      _popupRealmNoted = true;
+      var pbeacon = 'manage build ' + LUMA_INJECT_VERSION +
+        ' opener=' + (window.opener ? 'Y' : 'N') +
+        ' frame=' + (window.parent && window.parent !== window ? 'Y' : 'N') +
+        ' href=' + location.href.slice(0, 70) +
+        ' name=' + (window.name || '-') + ' scanner=N';
+      jsLog(pbeacon);
+      console.log('[LUMA_INJECT] ' + pbeacon);
+    }
+    return;
   }
   if (bound) return;
   bound = true;
@@ -245,7 +290,8 @@ export function startManageMenu(): void {
   var beacon = 'manage build ' + LUMA_INJECT_VERSION +
     ' opener=' + (window.opener ? 'Y' : 'N') +
     ' frame=' + (window.parent && window.parent !== window ? 'Y' : 'N') +
-    ' href=' + location.href.slice(0, 70);
+    ' href=' + location.href.slice(0, 70) +
+    ' name=' + (window.name || '-') + ' scanner=Y';
   jsLog(beacon);
   console.log('[LUMA_INJECT] ' + beacon);
   document.addEventListener('contextmenu', onContextMenu, true);
@@ -445,7 +491,7 @@ function onContextMenu(e: MouseEvent): void {
     // reset the hover window and re-prefetched in bursts — which killed
     // the Manage fallback on PCs where the submenu is identified by hover.
     if (t && t.closest && (t.closest('.contextMenu') || t.closest('[role="menu"]'))) return;
-    interactAt = Date.now();
+    menuCueAt = Date.now();
     // The event may fire in a popup document (bound via trackPopup).
     var doc = ((e.target as any) && (e.target as any).ownerDocument) || document;
     var id = appIdFromNode(e.target);
@@ -472,7 +518,6 @@ function onMouseOver(e: MouseEvent): void {
   try {
     var t: any = e.target;
     if (!t || t.nodeType !== 1) return;
-    interactAt = Date.now();
     var id = appIdFromNode(t);
     if (id) lastHoverAppId = id;
     // Remember when the pointer sits on the "Manage" entry: the submenu that
@@ -582,7 +627,7 @@ function onClickCapture(e: MouseEvent): void {
       hardStripAll();
       return;
     }
-    interactAt = Date.now();
+    menuCueAt = Date.now();
     var id = appIdFromNode(t) || lastHoverAppId;
     setContextApp(id);
     // Diagnostic: this is the trigger that actually fires (the contextmenu
@@ -728,10 +773,34 @@ function ensurePopupObs(): void {
   } catch (_) { }
 }
 
-function scanSkip(reason: string): void {
-  if (reason === _lastScanSkip) return;
-  _lastScanSkip = reason;
-  console.log('[LUMA_INJECT] Manage menu scan skipped: ' + reason);
+// key = stable reason WITHOUT volatile detail (menuDump counts change on
+// every call and would defeat any dedupe); detail = full line, printed only
+// when the key actually changes for this document (or realm-wide).
+function scanSkip(d: Document, key: string, detail?: string): void {
+  _lastOkByDoc.delete(d);
+  if (_skipByDoc.get(d) === key) return;
+  if (key === _lastScanSkip) return;
+  _skipByDoc.set(d, key);
+  _lastScanSkip = key;
+  console.log('[LUMA_INJECT] Manage menu scan skipped: ' + (detail || key));
+}
+
+// Successful inject in this document: forget its skip state so a later
+// genuine failure reprints (parity with the old single-slot reset).
+function scanSkipReset(d: Document): void {
+  _lastScanSkip = '';
+  try { _skipByDoc.delete(d); } catch (_) { }
+}
+
+// Success prints deduped per document+path: while a menu stays open every
+// mutation re-scan succeeds and used to reprint the full dump (24 lines
+// for 7 interactions). scanSkip() clears the marker so the next menu-open
+// prints again.
+var _lastOkByDoc: WeakMap<Document, string> = new WeakMap();
+function scanOk(d: Document, path: string, msg: string): void {
+  if (_lastOkByDoc.get(d) === path) return;
+  _lastOkByDoc.set(d, path);
+  console.log('[LUMA_INJECT] Manage menu ' + path + ' OK: ' + msg);
 }
 
 // One-line jsLog breadcrumb (throttled to 1/s) for remote debugging: when
@@ -759,12 +828,12 @@ function scanMenus(doc?: Document): void {
   var d: Document = doc || document;
   try {
     var md = menuData;
-    if (!md || !md.ready) { scanSkip('no menuData (ready=' + !!(md && md.ready) + ')'); return; }
-    if (!ctxAppId) { scanSkip('no ctxAppId'); return; }
-    if (md.appId !== ctxAppId) { scanSkip('menuData appid ' + md.appId + ' != ctxAppId ' + ctxAppId); return; }
+    if (!md || !md.ready) { scanSkip(d, 'no menuData (ready=' + !!(md && md.ready) + ')'); return; }
+    if (!ctxAppId) { scanSkip(d, 'no ctxAppId'); return; }
+    if (md.appId !== ctxAppId) { scanSkip(d, 'menuData appid ' + md.appId + ' != ctxAppId ' + ctxAppId); return; }
     var pt = d.getElementById('popup_target');
     var root: Element | null = pt || d.body;
-    if (!root) { scanSkip('no #popup_target and no body in doc(' + d.title + ')'); return; }
+    if (!root) { scanSkip(d, 'no #popup_target and no body in doc(' + d.title + ')'); return; }
     var injected = false;
     var via = '';
 
@@ -789,17 +858,26 @@ function scanMenus(doc?: Document): void {
       }
     }
     if (injected) {
-      _lastScanSkip = '';
-      console.log('[LUMA_INJECT] Manage menu class path OK (via=' + via + '): ' + menuDump(d));
+      scanSkipReset(d);
+      scanOk(d, 'class:' + via, menuDump(d));
       return;
     }
 
-    // Heavy class-agnostic paths need recent pointer activity — they walk
-    // the whole document (the menu may live in a popup we cannot query by
-    // class). Idle observers must not pay that cost.
-    if (Date.now() - interactAt > 6000) {
-      jsScanFail(d, 'idle');
-      scanSkip('class paths empty; no recent interaction (doc=' + JSON.stringify(d.title) + ')');
+    // Heavy class-agnostic paths walk the WHOLE document (the menu may live
+    // in a popup we cannot query by class) and only match while a menu is
+    // opening/open — within 4s of a Manage hover, a right-click or a Manage
+    // click. The old gate used generic pointer activity, which any mouseover
+    // refreshed, so idle hovering re-ran this sweep on every scan and failed
+    // about once per second (scan fail[final] was the top proxy-log line).
+    // The cheap class paths above stay ungated: they keep working when the
+    // submenu sits open longer than the cue window.
+    // pointerOnManage keeps the window alive while the pointer stays on the
+    // Manage row or inside its submenu: Steam loads the submenu asynchronously
+    // and can take longer than 4s, in which case the mutation that finally
+    // renders it must still be allowed to inject (parked pointer = live
+    // interaction; elsewhere the gate stays closed and idle sweeps stay off).
+    if (Date.now() - Math.max(manageHoverAt, menuCueAt) > 4000 && !pointerOnManage) {
+      scanSkip(d, 'no menu cue in last 4s; class paths empty in doc(' + JSON.stringify(d.title) + ')');
       return;
     }
 
@@ -811,8 +889,8 @@ function scanMenus(doc?: Document): void {
     var rowHit = findRowContents(d);
     if (rowHit) {
       ensureItems(d, rowHit.contents, rowHit.proto);
-      _lastScanSkip = '';
-      console.log('[LUMA_INJECT] Manage menu row path OK (proto=' +
+      scanSkipReset(d);
+      scanOk(d, 'row', '(proto=' +
         JSON.stringify((rowHit.proto.textContent || '').trim().slice(0, 40)) +
         ' contents=' + JSON.stringify((rowHit.contents.getAttribute('class') || rowHit.contents.tagName).slice(0, 60)) +
         ') ' + menuDump(d));
@@ -823,8 +901,8 @@ function scanMenus(doc?: Document): void {
     // pointing at its submenu — decisive for games that are not installed
     // (no "Browse local files" row exists there).
     if (tryAriaPath(d)) {
-      _lastScanSkip = '';
-      console.log('[LUMA_INJECT] Manage menu aria path OK: ' + menuDump(d));
+      scanSkipReset(d);
+      scanOk(d, 'aria', menuDump(d));
       return;
     }
 
@@ -832,7 +910,7 @@ function scanMenus(doc?: Document): void {
     // ARIA roles (visMenus=0/0), the hovered "Manage" row plus the position
     // of the submenu that opened to its right is all we have — and enough.
     if (tryGeometryPath(d)) {
-      _lastScanSkip = '';
+      scanSkipReset(d);
       return;
     }
 
@@ -843,8 +921,8 @@ function scanMenus(doc?: Document): void {
       if (isManageMenu(d, roleMenus[r])) { roleHit = true; ensureItems(d, roleMenus[r], null); }
     }
     if (roleHit) {
-      _lastScanSkip = '';
-      console.log('[LUMA_INJECT] Manage menu role=menu path OK: ' + menuDump(d));
+      scanSkipReset(d);
+      scanOk(d, 'role', menuDump(d));
       return;
     }
 
@@ -865,9 +943,8 @@ function scanMenus(doc?: Document): void {
     }
     if (best) {
       ensureItems(d, best, null);
-      _lastScanSkip = '';
-      console.log('[LUMA_INJECT] Manage menu guarded sweep OK (' + bestLen +
-        ' chars): ' + menuDump(d));
+      scanSkipReset(d);
+      scanOk(d, 'sweep', '(' + bestLen + ' chars): ' + menuDump(d));
       return;
     }
 
@@ -884,7 +961,8 @@ function scanMenus(doc?: Document): void {
         menuSig(liveContents) !== lastEnsuredSig) lastEnsured = null;
     }
     jsScanFail(d, 'final');
-    scanSkip('no Manage menu in doc(' + JSON.stringify(d.title) + '); ' + menuDump(d));
+    var skipKey = 'no Manage menu in doc(' + JSON.stringify(d.title) + ')';
+    scanSkip(d, skipKey, skipKey + '; ' + menuDump(d));
   } catch (e) {
     console.warn('[LUMA_INJECT] Manage menu scan error:', e);
   } finally {
@@ -1295,7 +1373,8 @@ function ensureItems(d: Document, menu: Element, protoHint?: HTMLElement | null)
   var contents = resolveContents(d, menu);
   if (!contents) {
     lastEnsuredSig = menuSig(menu);
-    scanSkip('Manage submenu has no contents container (role menuitem=' +
+    scanSkip(d, 'Manage submenu has no contents container',
+      'Manage submenu has no contents container (role menuitem=' +
       menu.querySelectorAll('[role="menuitem"]').length + ')');
     return;
   }
@@ -1445,13 +1524,15 @@ function mountFixesModal(appId: string): void {
   try { add(_bindOpener, 'bOpener'); } catch (_) { }
   try { add(window.opener, 'opener'); } catch (_) { }
   // Self-mount only from a real library window: menu popup realms (named
-  // contextmenu_*) mount into a window that closes right after the click,
-  // which is why the modal "disappeared" or "appeared by the tray icon".
+  // contextmenu_* on older builds, PopupWindow_* on current ones) mount
+  // into a window that closes right after the click, which is why the
+  // modal "disappeared" or "appeared by the tray icon".
   // Those realms broadcast instead and the visible library window answers.
   var selfOk = true;
   try {
     if (!isLibrarySurface()) selfOk = false;
     if (window.name && window.name.indexOf('contextmenu_') === 0) selfOk = false;
+    if (window.name && window.name.indexOf('PopupWindow_') === 0) selfOk = false;
   } catch (_) { }
   if (selfOk) { try { add(window, 'self'); } catch (_) { } }
   var threwNonSelf = false;
