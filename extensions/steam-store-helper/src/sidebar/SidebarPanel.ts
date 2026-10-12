@@ -428,18 +428,16 @@ function gameArtHtml(appId: string, fallbackSvg: string): string {
 }
 
 var _artObjectUrls: Record<string, string> = {};
+// In-flight fetch per appid: two renders can land inside the same fetch
+// window (the sidebar rebuilds on queue updates) — without this the second
+// render saw the still-empty url cache and refetched every image (346
+// requests in a single second in the session log).
+var _artInflight: Record<string, Promise<void>> = {};
 
 function loadGameArt(img: HTMLImageElement): void {
   var id = img.getAttribute('data-art-appid') || '';
   if (!id || img.getAttribute('data-art-loading')) return;
   img.setAttribute('data-art-loading', '1');
-
-  var cached = _artObjectUrls[id];
-  if (cached) {
-    img.src = cached;
-    img.style.display = '';
-    return;
-  }
 
   function useCdnFallback(): void {
     // Direct CDN may still 404 for some apps — then the svg stays visible.
@@ -448,19 +446,41 @@ function loadGameArt(img: HTMLImageElement): void {
     img.src = 'https://cdn.cloudflare.steamstatic.com/steam/apps/' + id + '/header.jpg';
   }
 
-  retryFetch(bridgeUrl('/api/art/' + id), { method: 'GET', mode: 'cors', cache: 'no-store' }, 'sidebar-art', { appId: id })
+  function applyResult(): void {
+    var url = _artObjectUrls[id];
+    if (url) {
+      img.src = url;
+      img.style.display = '';
+    } else {
+      useCdnFallback();
+    }
+  }
+
+  var cached = _artObjectUrls[id];
+  if (cached) {
+    applyResult();
+    return;
+  }
+
+  var pending = _artInflight[id];
+  if (pending) {
+    pending.then(applyResult);
+    return;
+  }
+
+  var p = retryFetch(bridgeUrl('/api/art/' + id), { method: 'GET', mode: 'cors' }, 'sidebar-art', { appId: id, quiet: true })
     .then(function(r) { return r.json(); })
     .then(function(d) {
-      if (!d || !d.ok || !d.b64) { useCdnFallback(); return; }
+      if (!d || !d.ok || !d.b64) return;
       var bin = atob(d.b64);
       var arr = new Uint8Array(bin.length);
       for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      var url = URL.createObjectURL(new Blob([arr], { type: d.ct || 'image/jpeg' }));
-      _artObjectUrls[id] = url;
-      img.src = url;
-      img.style.display = '';
+      _artObjectUrls[id] = URL.createObjectURL(new Blob([arr], { type: d.ct || 'image/jpeg' }));
     })
-    .catch(function() { useCdnFallback(); });
+    .catch(function() { /* waiters fall back to the CDN in applyResult */ })
+    .then(function() { delete _artInflight[id]; });
+  _artInflight[id] = p;
+  p.then(applyResult);
 }
 
 function wireCardArt(root: HTMLElement): void {
@@ -828,20 +848,29 @@ function renderProvidersTab(container: HTMLElement) {
         });
       });
 
-      // Wire up Get API Key → system browser via bridge
+      // Wire up Get API Key → system browser via bridge. Single-shot fetch
+      // (no retryFetch): /api/open-url is NOT idempotent — every attempt that
+      // reaches Rust spawns another browser tab, so a retry after a lost
+      // resolve would duplicate pages. The button disables while in flight.
       container.querySelectorAll('[data-getkey]').forEach(function(btn) {
         btn.addEventListener('click', function() {
           var u = btn.getAttribute('data-key-url');
           if (!u) return;
-          retryFetch(openUrlApi(), {
+          (btn as HTMLButtonElement).disabled = true;
+          (btn as HTMLButtonElement).style.opacity = '0.5';
+          fetch(openUrlApi(), {
             method: 'POST',
             mode: 'cors',
             cache: 'no-store',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ url: u })
-          }, 'open-getkey', {})
+          })
             .then(function(r) { return r.json(); })
-            .catch(function() {});
+            .catch(function() {})
+            .then(function() {
+              (btn as HTMLButtonElement).disabled = false;
+              (btn as HTMLButtonElement).style.opacity = '';
+            });
         });
       });
 
@@ -1783,49 +1812,49 @@ function renderSettingsTab(container: HTMLElement) {
 
   // ── Steam Account ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Steam Account') + '</div>';
-  html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">' + t('Steam Web API Key') + ' <span style="color:var(--luma-ssh-accent,#66c0ff);">' + t('(Goldberg achievements)') + '</span></div>';
-  html += '<div style="display:flex;gap:6px;margin-bottom:6px;">';
-  html += '<input id="luma-steam-apikey" type="password" placeholder="' + t('Enter your Steam Web API key') + '" style="flex:1;min-width:0;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;" />';
-  html += '<button type="button" id="luma-steam-apikey-eye" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#8f98a0;font-size:11px;padding:0 10px;cursor:pointer;">' + t('Show') + '</button>';
+  html += '<div class="luma-provider-row" style="flex-direction:column;align-items:stretch;gap:8px;">';
+  html += '<div style="font-size:11px;color:#8f98a0;">' + t('Steam Web API Key') + ' <span style="color:var(--luma-ssh-accent,#66c0ff);">' + t('(Goldberg achievements)') + '</span></div>';
+  html += '<div style="display:flex;gap:6px;">';
+  html += '<input id="luma-steam-apikey" type="password" placeholder="' + t('Enter your Steam Web API key') + '" style="flex:1;min-width:0;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;color:#fff;font-size:11px;outline:none;" />';
+  html += '<button type="button" id="luma-steam-apikey-eye" class="luma-sidebar-btn secondary" style="padding:0 10px;font-size:11px;">' + t('Show') + '</button>';
   html += '</div>';
-  html += '<button type="button" id="luma-steam-getkey" style="background:var(--luma-ssh-a10,rgba(102,192,255,.1));border:1px solid var(--luma-ssh-a30,rgba(102,192,255,.3));border-radius:6px;color:var(--luma-ssh-accent,#66c0ff);font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">' + t('Get API key') + ' \u2197</button>';
-  html += '<div style="font-size:11px;color:#8f98a0;margin:10px 0 4px;">SteamID64 <span style="color:var(--luma-ssh-accent,#66c0ff);">' + t('(Voices38 / catalog fixes)') + '</span></div>';
-  html += '<input id="luma-steam-id64" type="text" placeholder="76561197960265728" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:8px;" />';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:4px;">SteamID32 ' + t('(Account ID)') + '</div>';
-  html += '<input id="luma-steam-id32" type="text" placeholder="12345678" style="width:100%;background:rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:7px 9px;color:#fff;font-size:12px;outline:none;margin-bottom:10px;" />';
-  html += '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">';
-  html += '<button type="button" id="luma-steam-detect" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#fff;font-size:11px;font-weight:600;padding:6px 10px;cursor:pointer;">' + t('Detect Steam account') + '</button>';
+  html += '<div style="text-align:right;"><button type="button" id="luma-steam-getkey" class="luma-sidebar-btn secondary" style="padding:3px 8px;font-size:10px;">' + t('Get API key') + ' \u2197</button></div>';
+  html += '<div style="font-size:11px;color:#8f98a0;margin-top:4px;">SteamID64 <span style="color:var(--luma-ssh-accent,#66c0ff);">' + t('(Voices38 / catalog fixes)') + '</span></div>';
+  html += '<input id="luma-steam-id64" type="text" placeholder="76561197960265728" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;color:#fff;font-size:11px;outline:none;" />';
+  html += '<div style="font-size:11px;color:#8f98a0;">SteamID32 ' + t('(Account ID)') + '</div>';
+  html += '<input id="luma-steam-id32" type="text" placeholder="12345678" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:6px;padding:6px 8px;color:#fff;font-size:11px;outline:none;" />';
+  html += '<div style="display:flex;gap:6px;align-items:center;">';
+  html += '<button type="button" id="luma-steam-detect" class="luma-sidebar-btn secondary" style="font-size:11px;">' + t('Detect Steam account') + '</button>';
   html += '<span id="luma-steam-acct" style="font-size:10px;color:#8f98a0;"></span>';
   html += '</div>';
-  html += '<div id="luma-steam-accounts" style="margin-bottom:8px;"></div>';
+  html += '<div id="luma-steam-accounts"></div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
-  html += '<button type="button" id="luma-steam-save" style="background:rgba(46,160,67,.15);border:1px solid rgba(46,160,67,.4);border-radius:6px;color:#64c882;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">' + t('Save') + '</button>';
+  html += '<button type="button" id="luma-steam-save" class="luma-sidebar-btn primary" style="font-size:11px;">' + t('Save') + '</button>';
   html += '<span id="luma-steam-status" style="font-size:11px;color:#64c882;"></span>';
   html += '</div>';
   html += '</div></div>';
 
   // ── Key Generator ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Key Generator') + '</div>';
-  html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
-  html += '<div style="font-size:11px;color:#8f98a0;margin-bottom:8px;">' + t('Manifest pinning for generated Lua scripts') + '</div>';
+  html += '<div class="luma-provider-row" style="flex-direction:column;align-items:stretch;gap:8px;">';
+  html += '<div style="font-size:11px;color:#8f98a0;">' + t('Manifest pinning for generated Lua scripts') + '</div>';
   html += '<div style="display:flex;gap:8px;align-items:center;">';
-  html += '<button type="button" id="luma-sk-unpin-all" style="background:rgba(231,76,60,.1);border:1px solid rgba(231,76,60,.35);border-radius:6px;color:#e74c3c;font-size:11px;font-weight:700;padding:6px 14px;cursor:pointer;">' + t('Unpin All Manifests') + '</button>';
+  html += '<button type="button" id="luma-sk-unpin-all" class="luma-sidebar-btn secondary" style="font-size:11px;">' + t('Unpin All Manifests') + '</button>';
   html += '<span id="luma-sk-unpin-status" style="font-size:11px;color:#8f98a0;"></span>';
   html += '</div>';
   html += '</div></div>';
 
   // ── About ──
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('About') + '</div>';
-  html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
-  html += '<div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Steam Store Helper</div>';
+  html += '<div class="luma-provider-row" style="flex-direction:column;align-items:stretch;gap:4px;">';
+  html += '<div style="font-size:13px;font-weight:600;color:#fff;">Steam Store Helper</div>';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.6;">';
   html += '<div>' + t('Version') + ': ' + LUMA_VERSION + '</div>';
   html += '<div>TypeScript + Vite</div>';
   html += '<div>LumaForge CDP Proxy</div>';
   html += '</div></div></div>';
   html += '<div class="luma-sidebar-section"><div class="luma-sidebar-section-title">' + t('Keyboard Shortcuts') + '</div>';
-  html += '<div style="background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.05);border-radius:8px;padding:12px;">';
+  html += '<div class="luma-provider-row" style="flex-direction:column;align-items:stretch;gap:4px;">';
   html += '<div style="font-size:11px;color:#8f98a0;line-height:1.8;">';
   html += '<div><kbd style="background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px;font-size:10px;">Esc</kbd> ' + t('Close sidebar') + '</div>';
   html += '</div></div></div>';
@@ -1912,19 +1941,27 @@ function wireSteamAccountSection(container: HTMLElement) {
     getkeyBtn.addEventListener('click', function() {
       statusEl.textContent = t('Opening…');
       statusEl.style.color = 'var(--luma-ssh-accent,#66c0ff)';
-      retryFetch(openUrlApi(), {
+      // Single-shot: /api/open-url spawns a browser per request — a retry
+      // after a lost bridge resolve would open duplicate tabs.
+      getkeyBtn.disabled = true;
+      getkeyBtn.style.opacity = '0.5';
+      fetch(openUrlApi(), {
         method: 'POST',
         mode: 'cors',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: 'https://steamcommunity.com/dev/apikey' })
-      }, 'open-apikey', {})
+      })
         .then(function(r) { return r.json(); })
         .then(function(data) {
+          getkeyBtn.disabled = false;
+          getkeyBtn.style.opacity = '';
           statusEl.textContent = data.ok ? t('Opening steamcommunity.com\u2026') : (data.message || t('Failed'));
           statusEl.style.color = data.ok ? '#64c882' : '#ff6e6e';
         })
         .catch(function() {
+          getkeyBtn.disabled = false;
+          getkeyBtn.style.opacity = '';
           statusEl.textContent = t('Failed to open URL');
           statusEl.style.color = '#ff6e6e';
         });
@@ -2070,11 +2107,19 @@ function showCloudSavePane(): void {
     if (el) el.style.display = paneIds[i] === target ? '' : 'none';
   }
   var loginBtn = document.getElementById('luma-cs-login');
-  if (loginBtn) loginBtn.textContent = (prov === 'onedrive' ? t('Sign in with Microsoft') : t('Sign in with Google'));
   var useBtn = document.getElementById('luma-cs-use') as HTMLElement | null;
+  var tokens = (_cloudsaveStatus && _cloudsaveStatus.tokensAvailable) || {};
+  var active = _cloudsaveStatus ? _cloudsaveStatus.provider : '';
+  if (loginBtn) {
+    // Hide Sign in for providers that already have tokens (the header Sign
+    // out button handles ending the session); show it for the rest.
+    if (tokens[prov]) loginBtn.style.display = 'none';
+    else {
+      loginBtn.style.display = '';
+      loginBtn.textContent = (prov === 'onedrive' ? t('Sign in with Microsoft') : t('Sign in with Google'));
+    }
+  }
   if (useBtn) {
-    var tokens = (_cloudsaveStatus && _cloudsaveStatus.tokensAvailable) || {};
-    var active = _cloudsaveStatus ? _cloudsaveStatus.provider : '';
     var show = !!tokens[prov] && active !== prov;
     useBtn.style.display = show ? '' : 'none';
     if (show) useBtn.textContent = t('Use') + ' ' + (CS_PROVIDER_NAMES[prov] || prov);
