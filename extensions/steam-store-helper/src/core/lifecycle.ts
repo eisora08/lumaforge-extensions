@@ -1,10 +1,9 @@
-import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, IS_LINUX, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
+import { state, LUMA_INJECT_VERSION, DOCUMENT_ID, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, saveSessionState, loadSessionState } from '../core/state';
 import { abortPendingRequests, cancelAllRetries, removeButton, syncNamespaceState, ensureLumaButtonExists, setButtonState, setButtonLumaState, checkLocalStatus, handleLocalStatusResult } from '../ui/button';
 import { ST, ensureBtnStates, ensureKeyframes } from '../ui/styles';
 import { svgSpinner } from '../ui/svg';
 import { ensureSettingsButton } from '../modals/settings';
 import { closeModal, openSourceModal, stopDownloadPoll } from '../modals/source';
-import { openDepotModal } from '../modals/depot';
 import { openFixesModal } from '../modals/fixes';
 import { stopObserver, restoreHistory, patchHistory, reconcile, startObserver } from './spa';
 import { pushHistoryToBridge } from './history_sync';
@@ -171,10 +170,6 @@ function setupEventDelegation(): void {
           if (btn.getAttribute('aria-disabled') === 'true') return;
           if (btnLumaState === 'added') return;
           if (btnLumaState === 'in-library' || btnLumaState === 'installed' || btnLumaState === 'installing') {
-            if (IS_LINUX) {
-              console.log('[LUMA_INJECT] INSTALL click on Linux → opening depot modal for AppID:', btnAppId);
-              openDepotModal(btnAppId);
-            }
             return;
           }
           console.log('[LUMA_INJECT] Delegated click for AppID:', btnAppId);

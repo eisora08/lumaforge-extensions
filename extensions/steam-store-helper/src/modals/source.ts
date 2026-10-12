@@ -1,4 +1,4 @@
-import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION, IS_LINUX, saveSessionState } from '../core/state';
+import { state, BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, MODAL_MARKER_ATTR, MODAL_MARKER_VAL, LUMA_INJECT_VERSION, saveSessionState } from '../core/state';
 import { addHistoryEntry } from '../core/history_sync';
 import { svgDownload, svgSpinner, svgCheck, svgX, svgCloudDownload, svgLock, svgBox, svgErrorCircle, svgLibrary } from '../ui/svg';
 import { ST, dot } from '../ui/styles';
@@ -7,7 +7,6 @@ import { t } from '../i18n';
 import { formatFileSize, formatTimeRemaining, sourcesUrl, providerStatsUrl, downloadUrl, downloadStatusUrl, openLibraryUrl, getModalBody, getModalBadge, esc, bridgeUrl, steamKeysSettingsUrl, readPageHeaderUrl } from '../ui/helpers';
 import { bridgeFetch, loadArtChain } from '../api/bridge';
 import { setButtonState, setButtonLumaState } from '../ui/button';
-import { openDepotModal } from './depot';
 import { ensureSettingsButton, openSettingsModal } from './settings';
 
 // ---------------------------------------------------------------------------
@@ -1230,10 +1229,6 @@ export function showDownloadSuccess(appId: string, requestId: string, gameName?:
         '</div>';
     }
 
-    var depotBtn = IS_LINUX
-      ? '<button type="button" id="luma-btn-depot-download" class="luma-ssh-success-depot">' + svgBox() + '<span>' + t('Download Content') + '</span></button>'
-      : '';
-
     body.innerHTML =
       '<div style="' + ST.successWrap + '">' +
       '<div style="' + ST.successIcon + '">' + svgCheck(26, 26) + '</div>' +
@@ -1242,7 +1237,6 @@ export function showDownloadSuccess(appId: string, requestId: string, gameName?:
       cardHtml +
       '<div style="' + ST.successActions + '" class="luma-ssh-success-actions">' +
       '<button type="button" id="luma-btn-open-library" class="luma-ssh-success-primary">' + svgLibrary() + '<span>' + t('View in library') + '</span><span class="luma-ssh-success-arrow" aria-hidden="true">\u2192</span></button>' +
-      depotBtn +
       '<button type="button" id="luma-btn-continue" class="luma-ssh-success-secondary">' + t('Continue browsing') + '</button>' +
       '</div>' +
       '</div>';
@@ -1264,14 +1258,6 @@ export function showDownloadSuccess(appId: string, requestId: string, gameName?:
           })
           .catch(function () { art.style.display = 'none'; });
       };
-    }
-
-    var depotDlBtn = document.getElementById('luma-btn-depot-download');
-    if (depotDlBtn) {
-      depotDlBtn.addEventListener('click', function () {
-        closeModal();
-        openDepotModal(appId);
-      });
     }
 
     var openLibBtn = document.getElementById('luma-btn-open-library');

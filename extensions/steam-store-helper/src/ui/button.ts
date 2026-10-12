@@ -1,4 +1,4 @@
-import { state, _fetchSeq, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, BTN_MARKER_ATTR, BTN_MARKER_VAL, IS_LINUX, NAMESPACE, MODAL_MARKER_ATTR, MODAL_MARKER_VAL } from '../core/state';
+import { state, _fetchSeq, BTN_ID, FIXES_BTN_ID, BTN_APPID_ATTR, BTN_STATE_ATTR, BTN_MARKER_ATTR, BTN_MARKER_VAL, NAMESPACE, MODAL_MARKER_ATTR, MODAL_MARKER_VAL } from '../core/state';
 import { svgDownload, svgSpinner, svgCheck, svgGear, svgX, svgCloudDownload } from '../ui/svg';
 import { ST } from '../ui/styles';
 import { ensureKeyframes } from '../ui/styles';
@@ -139,15 +139,9 @@ export function setButtonLumaState(appId: string, lumaState: string): void {
 }
 
 export function applyInLibraryState(appId: string): void {
-  if (IS_LINUX) {
-    setButtonState(appId, ST.btnInstall, svgDownload() + '<span>' + t('Install') + '</span>', false);
-    setButtonLumaState(appId, 'in-library');
-    console.log('[LUMA_INJECT] App', appId, 'already in Luma library (INSTALL — Linux)');
-  } else {
-    setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>' + t('In library') + '</span>', true);
-    setButtonLumaState(appId, 'in-library');
-    console.log('[LUMA_INJECT] App', appId, 'already in Luma library');
-  }
+  setButtonState(appId, ST.btnInstalled, svgCheck() + '<span>' + t('In library') + '</span>', true);
+  setButtonLumaState(appId, 'in-library');
+  console.log('[LUMA_INJECT] App', appId, 'already in Luma library');
   removeFixesButton();
 }
 
