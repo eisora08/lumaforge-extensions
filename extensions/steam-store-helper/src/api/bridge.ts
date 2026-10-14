@@ -30,6 +30,19 @@ export function bridgeFetch(url: string, opts: RequestInit, label: string): Prom
 var RETRY_DELAYS = [0, 300, 750, 1500];
 var MAX_RETRY_ATTEMPTS = 4;
 
+// Bridge-layer errors (shim 10s timer, Rust read/connect timeouts mapped by
+// bridge_err_for_ui). Retrying piles more load onto the same stalled CEF
+// hook — and the original attempt may even complete server-side — so these
+// fail fast instead of hammering the bridge ×4.
+var NO_RETRY_ERRORS = ['bridge timeout', 'bridge unreachable'];
+
+function isNoRetryError(err: any): boolean {
+  if (!err) return false;
+  var msg = String(err.message || err);
+  if (NO_RETRY_ERRORS.indexOf(msg) !== -1) return true;
+  return /^read:/.test(msg);
+}
+
 export function retryFetch(
   url: string,
   opts: RequestInit,
@@ -44,6 +57,14 @@ export function retryFetch(
 ): Promise<Response> {
   hooks = hooks || {};
   var attempt = 0;
+  // Non-idempotent methods get a single attempt: a retry after a timeout
+  // could double-execute the request server-side (settings save, test-key).
+  var method = String((opts && opts.method) || 'GET').toUpperCase();
+  var maxAttempts = method === 'GET' || method === 'HEAD' ? MAX_RETRY_ATTEMPTS : 1;
+
+  function signalAborted(): boolean {
+    return !!(opts && opts.signal && (opts.signal as AbortSignal).aborted);
+  }
 
   function tryOnce(): Promise<Response> {
     attempt++;
@@ -52,32 +73,45 @@ export function retryFetch(
     if (hooks.beforeAttempt && !hooks.beforeAttempt(attemptNum)) {
       return Promise.reject(new DOMException('Context invalidated', 'AbortError'));
     }
+    if (signalAborted()) {
+      return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    }
 
     if (!hooks.quiet) console.log('[LUMA_BRIDGE] ' + label + ' attempt ' + attemptNum + (hooks.appId ? ' for AppID: ' + hooks.appId : ''));
 
     return fetch(url, opts)
       .then(function (r) {
-        if (opts && opts.signal && (opts.signal as AbortSignal).aborted) {
+        if (signalAborted()) {
           throw new DOMException('Aborted', 'AbortError');
         }
         if (!hooks.quiet) console.log('[LUMA_BRIDGE] ' + label + ' succeeded' + (hooks.appId ? ' for AppID: ' + hooks.appId : ''));
         return r;
       })
       .catch(function (err) {
-        if (opts && opts.signal && (opts.signal as AbortSignal).aborted) {
+        if (signalAborted()) {
           throw err;
         }
         if (err && err.name === 'AbortError') {
           throw err;
         }
+        if (isNoRetryError(err)) {
+          console.log('[LUMA_BRIDGE] ' + label + ' — no-retry bridge error' + (hooks.appId ? ' for AppID ' + hooks.appId : '') + ': ' + (err.message || err));
+          throw err;
+        }
         var isNetworkFailure = !err || !err.response;
-        if (attemptNum < MAX_RETRY_ATTEMPTS && isNetworkFailure) {
+        if (attemptNum < maxAttempts && isNetworkFailure) {
           var delay = RETRY_DELAYS[attemptNum] || 1500;
           console.log('[LUMA_BRIDGE] Network failure' + (hooks.appId ? ' for AppID ' + hooks.appId : '') + '; retrying in ' + delay + 'ms');
           return new Promise(function (resolve, reject) {
             var timerId = setTimeout(function () {
               var idx = state.retryTimers.indexOf(timerId);
               if (idx !== -1) state.retryTimers.splice(idx, 1);
+              // The caller's signal may have aborted while we sat in the
+              // delay window; do not launch another attempt.
+              if (signalAborted()) {
+                reject(new DOMException('Aborted', 'AbortError'));
+                return;
+              }
               tryOnce().then(resolve, reject);
             }, delay);
             state.retryTimers.push(timerId);
