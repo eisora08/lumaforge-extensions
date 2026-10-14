@@ -4,6 +4,56 @@
 local downloads = {}
 local providers_cache = nil
 
+-- Bridge budget. The native shim (BRIDGE_SHIM_JS in cef_hook) rejects a call
+-- after 10s and the proxy's own HTTP read timeout is 10s as well, so any
+-- handler that can block that long is a guaranteed `bridge timeout` for the
+-- UI instead of a slow response (the reply would arrive after the caller had
+-- already given up). Every handler awaited by the extension must stay well
+-- under that. Healthy hubcapmanifest latency is 0.17-0.35s, but the same call
+-- made from inside the webhelper process intermittently blows past 3s (4 of
+-- 17 measured /api/sources calls sat at 3.5-3.9s = the old 3s cap plus the
+-- next provider), which the UI renders as a false "Provider unreachable".
+-- So the cap is 5s per provider and the whole check loop is bounded by
+-- SOURCE_CHECK_BUDGET_S: worst case ~6s + overhead, still 4s under the shim.
+local PROVIDER_CHECK_TIMEOUT_S = 5
+local PROVIDER_STATS_TIMEOUT_S = 3
+local SOURCE_CHECK_BUDGET_S = 6
+-- Never start a provider check with less than this left of the budget: a
+-- starved check would just produce another false negative, so it is reported
+-- as "not checked" instead.
+local SOURCE_MIN_REMAINING_S = 2
+local TEST_KEY_TIMEOUT_S = 6
+local PROVIDER_STATS_TTL_S = 60
+local PROVIDER_STATS_RETRY_S = 15
+
+-- Per-AppID cache for GET /api/sources. The modal re-queries on every open
+-- and on every refresh, which is what earned the 429 rate limits from
+-- HubcapDB. A real answer is trusted for a while; an incomplete one (budget
+-- spent) or a transport failure only briefly, so a manual refresh really
+-- re-checks instead of replaying a stale "unreachable".
+local SOURCE_CACHE_OK_S = 12
+local SOURCE_CACHE_FAIL_S = 5
+local source_check_cache = {}
+
+-- Cached GET /api/provider-stats payload (stale-while-error: on a network
+-- failure the previous snapshot is served and the TTL still advances, so a
+-- dead provider costs one bounded attempt per minute, not one per poll).
+local provider_stats_cache = { at = 0, data = nil }
+
+-- Transport failure text for the last check of each provider, so the sources
+-- route can tell "timed out" apart from "DNS/connection refused" instead of
+-- collapsing both into `status == 0`.
+local function transport_error_text(resp)
+    local err = resp and resp.error
+    if type(err) == "string" and err ~= "" then
+        if #err > 120 then
+            err = string.sub(err, 1, 120)
+        end
+        return err
+    end
+    return nil
+end
+
 -- Default providers seeded into config.json when it is missing or has no
 -- providers (API keys are intentionally NOT included — user re-enters them).
 local DEFAULT_PROVIDERS = {
@@ -130,7 +180,7 @@ local function load_providers()
     return providers_cache
 end
 
-local function check_provider_available(provider, app_id)
+local function check_provider_available(provider, app_id, timeout_s)
     -- Key Generator is a local provider (lua generation + manifest fetch): always available
     if provider.id == "steamkeys" then
         return true, nil, 200
@@ -143,29 +193,40 @@ local function check_provider_available(provider, app_id)
         return false, nil, 0
     end
 
-    local resp = http_get_headers(check_url, headers, 10)
+    local cap = timeout_s or PROVIDER_CHECK_TIMEOUT_S
+    local resp = http_get_headers(check_url, headers, cap)
     local status = resp.status or 0
     local body = resp.body or ""
+    local err = transport_error_text(resp)
 
     if status ~= 200 then
-        return false, nil, status
+        -- Log every non-200 answer: the UI can only say "unreachable", this
+        -- is where the real cause (timeout / DNS / 429 / 5xx) becomes visible.
+        if status == 0 or status >= 400 then
+            log("[steam-store-helper] check " .. tostring(provider.id)
+                .. " app=" .. tostring(app_id)
+                .. " status=" .. tostring(status)
+                .. " cap=" .. tostring(cap) .. "s"
+                .. (err and (" err=" .. err) or ""))
+        end
+        return false, nil, status, err
     end
 
     if provider.id == "hubcapdb" then
         if body == "" then
-            return false, nil, status
+            return false, nil, status, err
         end
         local ok, parsed = pcall(json_decode, body)
         if ok and parsed then
             if parsed.status == "available" then
-                return true, check_url, status
+                return true, check_url, status, err
             else
                 log("[steam-store-helper] HubcapDB status for " .. app_id .. ": " .. tostring(parsed.status))
-                return false, nil, status
+                return false, nil, status, err
             end
         end
         log("[steam-store-helper] HubcapDB: failed to parse response body for " .. app_id)
-        return false, nil, status
+        return false, nil, status, err
     end
 
     if provider.id == "ryuu" then
@@ -173,18 +234,26 @@ local function check_provider_available(provider, app_id)
             local ok, parsed = pcall(json_decode, body)
             if ok and parsed and parsed.error then
                 log("[steam-store-helper] Ryuu error for " .. app_id .. ": " .. tostring(parsed.error))
-                return false, nil, status
+                return false, nil, status, err
             end
         end
-        return true, check_url, status
+        return true, check_url, status, err
     end
 
-    return true, check_url, status
+    return true, check_url, status, err
 end
 
 local function get_provider_stats()
+    local now = os.time()
+    if provider_stats_cache.data and (now - provider_stats_cache.at) < PROVIDER_STATS_TTL_S then
+        return provider_stats_cache.data
+    end
+
     local apis = load_providers()
     local stats = {}
+    -- Only a transport failure (status 0) invalidates the snapshot: an HTTP
+    -- error like 401 is a real answer and must be shown as such.
+    local net_failed = false
 
     for _, api in ipairs(apis) do
         local has_key = api.api_key ~= nil and api.api_key ~= ""
@@ -200,11 +269,14 @@ local function get_provider_stats()
             local headers = {
                 ["Authorization"] = "Bearer " .. api.api_key
             }
-            local resp = http_get_headers(stats_url, headers, 10)
+            local resp = http_get_headers(stats_url, headers, PROVIDER_STATS_TIMEOUT_S)
             local status = resp.status or 0
             local body = resp.body or ""
 
             entry.statsStatus = status
+            if status == 0 then
+                net_failed = true
+            end
 
             if status == 200 and body ~= "" then
                 local ok, parsed = pcall(json_decode, body)
@@ -232,6 +304,22 @@ local function get_provider_stats()
         end
 
         table.insert(stats, entry)
+    end
+
+    provider_stats_cache.at = now
+    if net_failed and provider_stats_cache.data then
+        -- Transport failure with a snapshot on hand: keep serving it so the
+        -- panel does not flip to an empty/unreachable state on every poll.
+        stats = provider_stats_cache.data
+    else
+        provider_stats_cache.data = stats
+        if net_failed then
+            -- First answer is a failure: remember it (so polls inside the TTL
+            -- do not hammer the endpoint with a 3s stall each), but expire it
+            -- early so a one-off blip on startup recovers in seconds, not
+            -- after the full TTL.
+            provider_stats_cache.at = now - PROVIDER_STATS_TTL_S + PROVIDER_STATS_RETRY_S
+        end
     end
 
     return stats
@@ -269,17 +357,56 @@ local function handle_providers()
 end
 
 local function handle_sources(app_id)
+    local cache_key = tostring(app_id)
+    local cached = source_check_cache[cache_key]
+    if cached then
+        local age = os.time() - cached.at
+        if age < (cached.complete and SOURCE_CACHE_OK_S or SOURCE_CACHE_FAIL_S) then
+            return cached.payload
+        end
+    end
+
     local apis = load_providers()
     local sources = {}
     local unavailable = {}
     local has_steamkeys = false
+    -- One request must return inside SOURCE_CHECK_BUDGET_S even if several
+    -- providers are enabled: each check is capped by what is left of the
+    -- budget, and once it is spent the remaining providers are reported as
+    -- "not checked" rather than left waiting past the shim deadline.
+    local deadline = os.time() + SOURCE_CHECK_BUDGET_S
+    -- A cache entry is only trusted for the long TTL when every enabled
+    -- provider gave a real answer (2xx/4xx/5xx). Anything that never got a
+    -- response (timeout, budget spent) is cached briefly so a refresh really
+    -- re-checks.
+    local complete = true
 
     for _, api in ipairs(apis) do
         if api.enabled then
-            local avail, url, status = check_provider_available(api, app_id)
+            local avail, url, status, err = false, nil, 0, nil
+            local budget_spent = false
+            local used_cap = PROVIDER_CHECK_TIMEOUT_S
+            if api.id == "steamkeys" then
+                avail, url, status, err = check_provider_available(api, app_id)
+            else
+                local remaining = deadline - os.time()
+                if remaining < SOURCE_MIN_REMAINING_S then
+                    budget_spent = true
+                    complete = false
+                else
+                    used_cap = math.min(PROVIDER_CHECK_TIMEOUT_S, remaining)
+                    avail, url, status, err =
+                        check_provider_available(api, app_id, used_cap)
+                    if status == 0 then
+                        complete = false
+                    end
+                end
+            end
             local detail_msg
             local key_error = false
-            if api.id == "steamkeys" then
+            if budget_spent then
+                detail_msg = "Not checked (request time budget spent)"
+            elseif api.id == "steamkeys" then
                 has_steamkeys = true
                 detail_msg = "Generate .lua \226\128\148 Pin \226\128\148 Fetch"
             elseif status == 400 or status == 401 or status == 403 then
@@ -294,8 +421,23 @@ local function handle_sources(app_id)
                 key_error = true
             elseif avail then
                 detail_msg = "Package available"
+            elseif status == 429 then
+                -- A real answer, and one we must not retry our way out of:
+                -- hitting the limit harder is what made checks flaky.
+                detail_msg = "Rate limited (HTTP 429) - retry shortly"
+            elseif status >= 500 then
+                detail_msg = "Provider error (HTTP " .. tostring(status) .. ")"
             elseif status == 0 then
-                detail_msg = "Provider unreachable"
+                -- Transport failure: name it. Collapsing every status 0 into
+                -- "Provider unreachable" is what read like a dead provider
+                -- when it was our own cap (or a rate limit) all along.
+                if err and string.find(string.lower(err), "timeout", 1, true) then
+                    detail_msg = "No answer in " .. tostring(used_cap) .. "s"
+                elseif err then
+                    detail_msg = "Unreachable (" .. err .. ")"
+                else
+                    detail_msg = "Provider unreachable"
+                end
             elseif api.id == "hubcapdb" then
                 detail_msg = "Game not found on HubcapDB"
             elseif api.id == "ryuu" then
@@ -332,12 +474,18 @@ local function handle_sources(app_id)
         })
     end
 
-    return {
+    local payload = {
         ok = true,
         sources = sources,
         unavailableSources = unavailable,
         message = #sources > 0 and nil or "No enabled provider currently has a package for this App ID."
     }
+    source_check_cache[cache_key] = {
+        at = os.time(),
+        complete = complete,
+        payload = payload
+    }
+    return payload
 end
 
 local function start_download(app_id, source_id, output_type)
@@ -688,6 +836,9 @@ routes["POST /api/settings"] = function(req)
 
     if ok then
         providers_cache = nil
+        provider_stats_cache.at = 0
+        provider_stats_cache.data = nil
+        source_check_cache = {}
         log("[steam-store-helper] Settings saved, providers cache cleared")
     end
 
@@ -777,7 +928,7 @@ routes["POST /api/settings/test-key"] = function(req)
         end
     end
 
-    local resp = http_get_headers(test_url, headers, 15)
+    local resp = http_get_headers(test_url, headers, TEST_KEY_TIMEOUT_S)
     local status = resp.status or 0
 
     -- Only 2xx proves the credential works: providers answer 400/401 for
