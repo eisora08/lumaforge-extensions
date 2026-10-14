@@ -342,6 +342,9 @@ const ES: Record<string, string> = {
   // Cloud Saves tab
   Cloud: 'Nube',
   'Cloud Redirect is not installed': 'Cloud Redirect no est\u00e1 instalado',
+  'Cloud Saves is not available': 'Guardados en la nube no disponibles',
+  'The cloud save backend is not running.':
+    'El servicio de guardados en la nube no est\u00e1 disponible en esta plataforma.',
   'Cloud save sync runs inside Steam through the Cloud Redirect DLL. Install it to back up your saves to the cloud.':
     'La sincronizaci\u00f3n de guardados en la nube funciona dentro de Steam mediante la DLL Cloud Redirect. Inst\u00e1lala para respaldar tus guardados en la nube.',
   'Install Cloud Redirect': 'Instalar Cloud Redirect',

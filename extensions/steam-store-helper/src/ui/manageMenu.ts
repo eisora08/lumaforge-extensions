@@ -1503,12 +1503,26 @@ function closeMenu(menu: Element | null): void {
 // origin throughout (steamloopback), so the direct property read works; a
 // cross-origin read that throws falls back to postMessage (the listener
 // installed by startManageMenu opens it in the receiver's document).
+//
+// Candidates are also gated on viewport size: menu popup realms that Steam
+// names WITHOUT the contextmenu_/PopupWindow_ prefixes measure ~21x21px
+// (Linux builds), and mounting there renders an invisible modal — the
+// "fixes check rect=21x21@0,0" symptom. A cross-origin realm that can't be
+// measured counts as visible so the postMessage fallback still runs.
+function realmVisible(w: any): boolean {
+  try {
+    return (w.innerWidth || 0) >= 300 && (w.innerHeight || 0) >= 200;
+  } catch (_) {
+    return true;
+  }
+}
 function mountFixesModal(appId: string): void {
   var cands: any[] = [];
   var tags: string[] = [];
   function add(w: any, tag: string): void {
     try {
       if (!w) return;
+      if (!realmVisible(w)) return;
       for (var i = 0; i < cands.length; i++) if (cands[i] === w) return;
       cands.push(w);
       tags.push(tag);
@@ -1531,6 +1545,7 @@ function mountFixesModal(appId: string): void {
   var selfOk = true;
   try {
     if (!isLibrarySurface()) selfOk = false;
+    if (!realmVisible(window)) selfOk = false;
     if (window.name && window.name.indexOf('contextmenu_') === 0) selfOk = false;
     if (window.name && window.name.indexOf('PopupWindow_') === 0) selfOk = false;
   } catch (_) { }
@@ -1559,6 +1574,7 @@ function mountFixesModal(appId: string): void {
   var diag = 'fixes chain self=' + location.href.slice(0, 70) +
     ' name=' + (window.name || '-') +
     ' focus=' + (document.hasFocus() ? 'Y' : 'N') +
+    ' vp=' + window.innerWidth + 'x' + window.innerHeight +
     ' selfOk=' + (selfOk ? 'Y' : 'N') +
     ' openerClick=' + (window.opener ? 'Y' : 'N') +
     ' saved=' + (_bindOpener ? 'Y' : 'N') +

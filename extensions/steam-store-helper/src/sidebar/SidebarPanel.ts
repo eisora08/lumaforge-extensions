@@ -2127,7 +2127,24 @@ function showCloudSavePane(): void {
 }
 
 function applyCloudSaveStatus(s: any): void {
-  if (!s || !s.ok) return;
+  var un = document.getElementById('luma-cs-unavailable');
+  if (!s || !s.ok) {
+    // Backend refused (e.g. "only available on Windows"): surface the
+    // message rather than leaving the tab blank.
+    if (un) {
+      un.style.display = '';
+      var msgEl = document.getElementById('luma-cs-unavailable-msg');
+      if (msgEl) {
+        msgEl.textContent = (s && s.message) || t('The cloud save backend is not running.');
+      }
+    }
+    var ni0 = document.getElementById('luma-cs-notinstalled');
+    var ins0 = document.getElementById('luma-cs-installed');
+    if (ni0) ni0.style.display = 'none';
+    if (ins0) ins0.style.display = 'none';
+    return;
+  }
+  if (un) un.style.display = 'none';
   _cloudsaveStatus = s;
   if (!document.getElementById('luma-cs-list')) return;
 
@@ -2290,6 +2307,14 @@ function renderCloudsaveTab(container: HTMLElement) {
   var html = '<div style="display:flex;flex-direction:column;height:100%;overflow:hidden;">';
   html += '<div class="luma-sidebar-section" style="flex:1;display:flex;flex-direction:column;min-height:0;margin-bottom:0;">';
   html += '<div class="luma-sidebar-section-title" style="flex-shrink:0;">' + t('Cloud Saves') + '</div>';
+
+  // Backend said ok:false (e.g. platform not supported yet) — show its
+  // message instead of rendering a mute, empty tab.
+  html += '<div id="luma-cs-unavailable" style="display:none;">';
+  html += '<div class="luma-stat-card" style="flex-direction:column;align-items:stretch;gap:8px;">';
+  html += '<div style="font-size:13px;font-weight:600;color:#fff;">' + t('Cloud Saves is not available') + '</div>';
+  html += '<div id="luma-cs-unavailable-msg" style="font-size:10px;color:#8f98a0;"></div>';
+  html += '</div></div>';
 
   // Not installed
   html += '<div id="luma-cs-notinstalled" style="display:none;">';
