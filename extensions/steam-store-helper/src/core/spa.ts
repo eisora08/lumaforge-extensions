@@ -4,6 +4,7 @@ import { abortPendingRequests, cancelAllRetries, removeButton, getObserverRoot, 
 import { closeModal } from '../modals/source';
 import { ensureSettingsButton } from '../modals/settings';
 import { openSidebar } from '../sidebar/SidebarPanel';
+import { startManageMenu } from '../ui/manageMenu';
 
 // Last logged button state — store pages reconcile on every mutation frame;
 // logging the unchanged attribute each time was pure log spam.
@@ -35,6 +36,15 @@ export function reconcile(): void {
   // store action-button logic (its DOM queries/log spam fire on every
   // mutation frame in the constantly-repainting library).
   if (isLibrarySurface()) {
+    // On a cold start the first document is a data:text/html placeholder
+    // (hostname is not steamloopback.host yet), so activate() skips the
+    // manage menu. When the surface transitions to steamloopback.host the
+    // reconcile loop must start it lazily — otherwise the library only gets
+    // the manage menu after a theme toggle forces a re-injection.
+    if (!state.manageMenuStarted) {
+      state.manageMenuStarted = true;
+      startManageMenu();
+    }
     state.currentUrl = url;
     return;
   }

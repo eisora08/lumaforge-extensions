@@ -111,6 +111,7 @@ interface State {
   beforeunloadHandler: (() => void) | null;
   _rafPending: boolean;
   reconcileCount: number;
+  manageMenuStarted: boolean;
   documentId: string;
   savedFocusElement: Element | null;
   installingAppIds: Record<string, boolean>;
@@ -186,6 +187,7 @@ var state: State = {
   beforeunloadHandler: null,
   _rafPending: false,
   reconcileCount: 0,
+  manageMenuStarted: false,
   documentId: DOCUMENT_ID,
   savedFocusElement: null,
   installingAppIds: {},

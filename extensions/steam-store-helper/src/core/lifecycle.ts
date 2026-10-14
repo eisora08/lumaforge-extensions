@@ -72,7 +72,10 @@ export function activate(): void {
     // renders unstyled (Close clipped at the right edge).
     ensureKeyframes();
     startObserver();
-    if (isLibrarySurface()) startManageMenu();
+    if (isLibrarySurface()) {
+      state.manageMenuStarted = true;
+      startManageMenu();
+    }
     ensureLumaButtonExists();
     ensureSettingsButton();
     detectBridgePort();
